@@ -57,6 +57,34 @@ Sleep 1500ms
 Escape
 Sleep 1000ms
 
+# 두 번째 소스(Codex)로 이동 후 진입
+Type "j"
+Sleep 300ms
+Enter
+Sleep 500ms
+
+# Monthly 상태이므로 Daily로 전환
+Type "d"
+Sleep 1500ms
+
+# Codex Daily 스크롤
+Type "k"
+Sleep 200ms
+Type "k"
+Sleep 200ms
+Type "k"
+Sleep 1000ms
+
+# Codex Model breakdown popup
+Enter
+Sleep 2000ms
+Escape
+Sleep 500ms
+
+# Overview로 돌아가기
+Escape
+Sleep 1000ms
+
 # Tab 2: Stats
 Type "2"
 Sleep 1500ms
