@@ -32,6 +32,15 @@ pub struct ModelPricing {
     pub cache_read_input_token_cost: Option<f64>,
     #[serde(default)]
     pub cache_creation_input_token_cost: Option<f64>,
+    // Tiered pricing fields (above 200k tokens)
+    #[serde(default)]
+    pub input_cost_per_token_above_200k_tokens: Option<f64>,
+    #[serde(default)]
+    pub output_cost_per_token_above_200k_tokens: Option<f64>,
+    #[serde(default)]
+    pub cache_read_input_token_cost_above_200k_tokens: Option<f64>,
+    #[serde(default)]
+    pub cache_creation_input_token_cost_above_200k_tokens: Option<f64>,
 }
 
 /// Cached pricing data
@@ -52,6 +61,20 @@ impl PricingCache {
             .unwrap_or(0);
         now - self.fetched_at > CACHE_TTL_SECS
     }
+}
+
+/// Token threshold for tiered pricing (200k tokens)
+const TIERED_THRESHOLD: u64 = 200_000;
+
+/// Calculate cost with tiered pricing: base rate up to threshold, tiered rate above.
+fn tiered_cost(tokens: u64, base_price: f64, tiered_price: Option<f64>) -> f64 {
+    if tokens <= TIERED_THRESHOLD || tiered_price.is_none() {
+        return tokens as f64 * base_price;
+    }
+    let tiered = tiered_price.unwrap();
+    let below = TIERED_THRESHOLD as f64 * base_price;
+    let above = (tokens - TIERED_THRESHOLD) as f64 * tiered;
+    below + above
 }
 
 /// Pricing service for calculating token costs
@@ -214,15 +237,28 @@ impl PricingService {
             None => return 0.0,
         };
 
-        let input_cost = pricing.input_cost_per_token.unwrap_or(0.0);
-        let output_cost = pricing.output_cost_per_token.unwrap_or(0.0);
-        let cache_read_cost = pricing.cache_read_input_token_cost.unwrap_or(0.0);
-        let cache_creation_cost = pricing.cache_creation_input_token_cost.unwrap_or(0.0);
+        let input = tiered_cost(
+            entry.input_tokens,
+            pricing.input_cost_per_token.unwrap_or(0.0),
+            pricing.input_cost_per_token_above_200k_tokens,
+        );
+        let output = tiered_cost(
+            entry.output_tokens,
+            pricing.output_cost_per_token.unwrap_or(0.0),
+            pricing.output_cost_per_token_above_200k_tokens,
+        );
+        let cache_read = tiered_cost(
+            entry.cache_read_tokens,
+            pricing.cache_read_input_token_cost.unwrap_or(0.0),
+            pricing.cache_read_input_token_cost_above_200k_tokens,
+        );
+        let cache_creation = tiered_cost(
+            entry.cache_creation_tokens,
+            pricing.cache_creation_input_token_cost.unwrap_or(0.0),
+            pricing.cache_creation_input_token_cost_above_200k_tokens,
+        );
 
-        (entry.input_tokens as f64 * input_cost)
-            + (entry.cache_read_tokens as f64 * cache_read_cost)
-            + (entry.cache_creation_tokens as f64 * cache_creation_cost)
-            + (entry.output_tokens as f64 * output_cost)
+        input + output + cache_read + cache_creation
     }
 
     /// Get pricing for a model (exact → normalized → fuzzy substring)
@@ -320,6 +356,7 @@ mod tests {
                 output_cost_per_token: Some(0.000015),        // $15 per 1M tokens
                 cache_read_input_token_cost: Some(0.0000003), // $0.30 per 1M tokens
                 cache_creation_input_token_cost: Some(0.00000375), // $3.75 per 1M tokens
+                ..Default::default()
             },
         );
         models.insert(
@@ -329,6 +366,21 @@ mod tests {
                 output_cost_per_token: Some(0.000075), // $75 per 1M tokens
                 cache_read_input_token_cost: Some(0.0000015), // $1.50 per 1M tokens
                 cache_creation_input_token_cost: Some(0.00001875), // $18.75 per 1M tokens
+                ..Default::default()
+            },
+        );
+        // Model with tiered pricing (above 200k tokens)
+        models.insert(
+            "claude-opus-4-6".to_string(),
+            ModelPricing {
+                input_cost_per_token: Some(0.000015),  // $15 per 1M tokens
+                output_cost_per_token: Some(0.000075), // $75 per 1M tokens
+                cache_read_input_token_cost: Some(0.0000015), // $1.50 per 1M tokens
+                cache_creation_input_token_cost: Some(0.00001875), // $18.75 per 1M tokens
+                input_cost_per_token_above_200k_tokens: Some(0.00003), // $30 per 1M tokens
+                output_cost_per_token_above_200k_tokens: Some(0.00015), // $150 per 1M tokens
+                cache_read_input_token_cost_above_200k_tokens: Some(0.000003), // $3 per 1M tokens
+                cache_creation_input_token_cost_above_200k_tokens: Some(0.0000375), // $37.50 per 1M tokens
             },
         );
 
@@ -516,8 +568,7 @@ mod tests {
             ModelPricing {
                 input_cost_per_token: Some(0.00001),
                 output_cost_per_token: Some(0.00003),
-                cache_read_input_token_cost: None,
-                cache_creation_input_token_cost: None,
+                ..Default::default()
             },
         );
         models.insert(
@@ -525,8 +576,7 @@ mod tests {
             ModelPricing {
                 input_cost_per_token: Some(0.000005),
                 output_cost_per_token: Some(0.000015),
-                cache_read_input_token_cost: None,
-                cache_creation_input_token_cost: None,
+                ..Default::default()
             },
         );
         models.insert(
@@ -534,8 +584,7 @@ mod tests {
             ModelPricing {
                 input_cost_per_token: Some(0.000001),
                 output_cost_per_token: Some(0.000004),
-                cache_read_input_token_cost: None,
-                cache_creation_input_token_cost: None,
+                ..Default::default()
             },
         );
         models.insert(
@@ -543,8 +592,7 @@ mod tests {
             ModelPricing {
                 input_cost_per_token: Some(0.00002),
                 output_cost_per_token: Some(0.00006),
-                cache_read_input_token_cost: None,
-                cache_creation_input_token_cost: None,
+                ..Default::default()
             },
         );
 
@@ -645,8 +693,7 @@ mod tests {
             ModelPricing {
                 input_cost_per_token: Some(0.001),
                 output_cost_per_token: Some(0.002),
-                cache_read_input_token_cost: None,
-                cache_creation_input_token_cost: None,
+                ..Default::default()
             },
         );
 
@@ -669,8 +716,8 @@ mod tests {
     fn test_model_count() {
         let (service, _temp) = create_test_service();
 
-        // We added 2 models in create_test_service
-        assert_eq!(service.model_count(), 2);
+        // We added 3 models in create_test_service
+        assert_eq!(service.model_count(), 3);
     }
 
     // ========== from_cache_only tests ==========
@@ -682,7 +729,7 @@ mod tests {
 
         let service = PricingService::from_cache_only_with_path(&cache_path);
         assert!(service.is_some());
-        assert_eq!(service.unwrap().model_count(), 2);
+        assert_eq!(service.unwrap().model_count(), 3);
     }
 
     #[test]
@@ -725,5 +772,150 @@ mod tests {
         // Corrupt cache with no network → should return None
         let service = PricingService::from_cache_only_with_path(&cache_path);
         assert!(service.is_none());
+    }
+
+    // ========== tiered_cost unit tests ==========
+
+    #[test]
+    fn test_tiered_cost_below_threshold() {
+        // 100k tokens at $15/1M → all at base rate
+        let cost = tiered_cost(100_000, 0.000015, Some(0.00003));
+        let expected = 100_000.0 * 0.000015;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_tiered_cost_at_threshold() {
+        // Exactly 200k tokens → all at base rate (threshold is inclusive)
+        let cost = tiered_cost(200_000, 0.000015, Some(0.00003));
+        let expected = 200_000.0 * 0.000015;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_tiered_cost_above_threshold() {
+        // 300k tokens: 200k at base ($15/1M), 100k at tiered ($30/1M)
+        let cost = tiered_cost(300_000, 0.000015, Some(0.00003));
+        let expected = 200_000.0 * 0.000015 + 100_000.0 * 0.00003;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_tiered_cost_just_above_threshold() {
+        // 200,001 tokens: 200k at base, 1 token at tiered
+        let cost = tiered_cost(200_001, 0.000015, Some(0.00003));
+        let expected = 200_000.0 * 0.000015 + 1.0 * 0.00003;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_tiered_cost_none_tiered_price_uses_base() {
+        // No tiered price → all tokens at base rate even above threshold
+        let cost = tiered_cost(300_000, 0.000015, None);
+        let expected = 300_000.0 * 0.000015;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_tiered_cost_zero_tokens() {
+        let cost = tiered_cost(0, 0.000015, Some(0.00003));
+        assert!((cost - 0.0).abs() < f64::EPSILON);
+    }
+
+    // ========== calculate_cost tiered integration tests ==========
+
+    #[test]
+    fn test_calculate_cost_tiered_model_below_threshold() {
+        let (service, _temp) = create_test_service();
+        // claude-opus-4-6 with 100k input, 50k output → all below threshold, uses base rate
+        let entry = make_entry(Some("claude-opus-4-6"), 100_000, 50_000, 0, 0, None);
+
+        let cost = service.calculate_cost(&entry);
+
+        // input: 100k * $15/1M = $1.50
+        // output: 50k * $75/1M = $3.75
+        let expected = 100_000.0 * 0.000015 + 50_000.0 * 0.000075;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_calculate_cost_tiered_model_above_threshold() {
+        let (service, _temp) = create_test_service();
+        // claude-opus-4-6: 300k input, 250k output, 300k cache_read, 500k cache_creation
+        let entry = make_entry(
+            Some("claude-opus-4-6"),
+            300_000,
+            250_000,
+            300_000,
+            500_000,
+            None,
+        );
+
+        let cost = service.calculate_cost(&entry);
+
+        // input: 200k * $15/1M + 100k * $30/1M = $3.00 + $3.00 = $6.00
+        let input = 200_000.0 * 0.000015 + 100_000.0 * 0.00003;
+        // output: 200k * $75/1M + 50k * $150/1M = $15.00 + $7.50 = $22.50
+        let output = 200_000.0 * 0.000075 + 50_000.0 * 0.00015;
+        // cache_read: 200k * $1.50/1M + 100k * $3/1M = $0.30 + $0.30 = $0.60
+        let cache_read = 200_000.0 * 0.0000015 + 100_000.0 * 0.000003;
+        // cache_creation: 200k * $18.75/1M + 300k * $37.50/1M = $3.75 + $11.25 = $15.00
+        let cache_creation = 200_000.0 * 0.00001875 + 300_000.0 * 0.0000375;
+        let expected = input + output + cache_read + cache_creation;
+
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_calculate_cost_non_tiered_model_flat_rate() {
+        let (service, _temp) = create_test_service();
+        // claude-sonnet-4 has no tiered pricing → uses flat rate even above 200k
+        let entry = make_entry(Some("claude-sonnet-4"), 300_000, 0, 0, 0, None);
+
+        let cost = service.calculate_cost(&entry);
+
+        // All 300k at base rate: 300k * $3/1M = $0.90
+        let expected = 300_000.0 * 0.000003;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Expected {}, got {}",
+            expected,
+            cost
+        );
     }
 }

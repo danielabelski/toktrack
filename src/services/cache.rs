@@ -43,7 +43,7 @@ fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, 
 
 /// Bump when aggregation logic changes (e.g., timezone fix).
 /// Mismatched version → full cache invalidation.
-const CACHE_VERSION: u32 = 7;
+const CACHE_VERSION: u32 = 8;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DailySummaryCache {
