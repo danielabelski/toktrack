@@ -101,6 +101,7 @@ impl DataLoaderService {
             .ok_or_else(|| ToktrackError::Cache("No cache service".into()))?;
 
         let since = warm_path_since();
+        let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
 
         let mut all_summaries = Vec::new();
         let mut source_stats: HashMap<String, (u64, f64)> = HashMap::new();
@@ -112,7 +113,10 @@ impl DataLoaderService {
 
             let entries = if has_parser_cache {
                 match parser.parse_recent_files(since) {
-                    Ok(e) => e,
+                    Ok(e) => e
+                        .into_iter()
+                        .filter(|entry| entry.local_date() >= yesterday)
+                        .collect(),
                     Err(e) => {
                         eprintln!("[toktrack] Warning: {} failed: {}", parser.name(), e);
                         continue;
@@ -515,5 +519,74 @@ mod tests {
         let result = service.apply_pricing(entries);
         // Copilot should always be $0 regardless of original cost
         assert_eq!(result[0].cost_usd, Some(0.0));
+    }
+
+    // ========== warm path filtering tests ==========
+
+    #[test]
+    fn test_warm_path_filters_old_date_entries() {
+        // Simulate cross-day JSONL: a file modified today that contains
+        // entries spanning multiple days (e.g., a long session from 5 days ago).
+        // Only yesterday and today entries should survive warm-path filtering.
+        let today = Local::now().date_naive();
+        let yesterday = today - chrono::Duration::days(1);
+        let five_days_ago = today - chrono::Duration::days(5);
+
+        let old_entry = UsageEntry {
+            timestamp: five_days_ago.and_hms_opt(23, 0, 0).unwrap().and_utc(),
+            model: Some("claude".to_string()),
+            input_tokens: 50_000_000,
+            output_tokens: 10_000_000,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            thinking_tokens: 0,
+            cost_usd: Some(100.0),
+            message_id: None,
+            request_id: None,
+            source: None,
+            provider: None,
+        };
+        let yesterday_entry = UsageEntry {
+            timestamp: yesterday.and_hms_opt(12, 0, 0).unwrap().and_utc(),
+            model: Some("claude".to_string()),
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            thinking_tokens: 0,
+            cost_usd: Some(0.01),
+            message_id: None,
+            request_id: None,
+            source: None,
+            provider: None,
+        };
+        let today_entry = UsageEntry {
+            timestamp: today.and_hms_opt(10, 0, 0).unwrap().and_utc(),
+            model: Some("claude".to_string()),
+            input_tokens: 2000,
+            output_tokens: 1000,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            thinking_tokens: 0,
+            cost_usd: Some(0.02),
+            message_id: None,
+            request_id: None,
+            source: None,
+            provider: None,
+        };
+
+        let all_entries = vec![old_entry, yesterday_entry, today_entry];
+
+        // Apply the same filter used in load_warm_path
+        let filtered: Vec<UsageEntry> = all_entries
+            .into_iter()
+            .filter(|entry| entry.local_date() >= yesterday)
+            .collect();
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].local_date(), yesterday);
+        assert_eq!(filtered[1].local_date(), today);
+        // The old entry with massive tokens should be gone
+        assert!(filtered.iter().all(|e| e.input_tokens < 50_000_000));
     }
 }
