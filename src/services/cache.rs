@@ -43,7 +43,7 @@ fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, 
 
 /// Bump when aggregation logic changes (e.g., timezone fix).
 /// Mismatched version → full cache invalidation.
-const CACHE_VERSION: u32 = 9;
+const CACHE_VERSION: u32 = 10;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DailySummaryCache {
@@ -151,6 +151,14 @@ impl DailySummaryCacheService {
             fs::remove_file(&lock)?;
         }
         Ok(())
+    }
+
+    /// Return the latest (max) date in the cached summaries, or None.
+    pub fn latest_cached_date(&self, cli: &str) -> Option<NaiveDate> {
+        let path = self.cache_path(cli);
+        let content = fs::read_to_string(&path).ok()?;
+        let cache: DailySummaryCache = serde_json::from_str(&content).ok()?;
+        cache.summaries.iter().map(|s| s.date).max()
     }
 
     /// Load cached summaries for past dates (excludes today).
@@ -839,5 +847,80 @@ mod tests {
         let saved: DailySummaryCache =
             serde_json::from_str(&fs::read_to_string(&cache_path).unwrap()).unwrap();
         assert_eq!(saved.version, CACHE_VERSION);
+    }
+
+    // Test 15: latest_cached_date returns None when no cache exists
+    #[test]
+    fn test_latest_cached_date_no_cache() {
+        let (service, _temp) = create_test_service();
+        assert_eq!(service.latest_cached_date("claude-code"), None);
+    }
+
+    // Test 16: latest_cached_date returns max date from summaries
+    #[test]
+    fn test_latest_cached_date_returns_max() {
+        let (service, _temp) = create_test_service();
+        let cache = DailySummaryCache {
+            cli: "claude-code".to_string(),
+            version: CACHE_VERSION,
+            updated_at: chrono::Utc::now().timestamp(),
+            summaries: vec![
+                DailySummary {
+                    date: NaiveDate::from_ymd_opt(2026, 2, 25).unwrap(),
+                    total_input_tokens: 100,
+                    total_output_tokens: 50,
+                    total_cache_read_tokens: 0,
+                    total_cache_creation_tokens: 0,
+                    total_thinking_tokens: 0,
+                    total_cost_usd: 0.01,
+                    models: HashMap::new(),
+                },
+                DailySummary {
+                    date: NaiveDate::from_ymd_opt(2026, 2, 27).unwrap(),
+                    total_input_tokens: 200,
+                    total_output_tokens: 100,
+                    total_cache_read_tokens: 0,
+                    total_cache_creation_tokens: 0,
+                    total_thinking_tokens: 0,
+                    total_cost_usd: 0.02,
+                    models: HashMap::new(),
+                },
+                DailySummary {
+                    date: NaiveDate::from_ymd_opt(2026, 2, 26).unwrap(),
+                    total_input_tokens: 150,
+                    total_output_tokens: 75,
+                    total_cache_read_tokens: 0,
+                    total_cache_creation_tokens: 0,
+                    total_thinking_tokens: 0,
+                    total_cost_usd: 0.015,
+                    models: HashMap::new(),
+                },
+            ],
+        };
+        let cache_path = service.cache_path("claude-code");
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
+
+        assert_eq!(
+            service.latest_cached_date("claude-code"),
+            Some(NaiveDate::from_ymd_opt(2026, 2, 27).unwrap())
+        );
+    }
+
+    // Test 17: latest_cached_date returns None for empty summaries
+    #[test]
+    fn test_latest_cached_date_empty_summaries() {
+        let (service, _temp) = create_test_service();
+        let cache = DailySummaryCache {
+            cli: "claude-code".to_string(),
+            version: CACHE_VERSION,
+            updated_at: chrono::Utc::now().timestamp(),
+            summaries: vec![],
+        };
+        let cache_path = service.cache_path("claude-code");
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
+
+        assert_eq!(service.latest_cached_date("claude-code"), None);
     }
 }

@@ -12,6 +12,19 @@ use crate::parsers::ParserRegistry;
 use crate::services::{Aggregator, DailySummaryCacheService, PricingService};
 use crate::types::{CacheWarning, DailySummary, Result, SourceUsage, ToktrackError, UsageEntry};
 
+/// Check if there's a date gap between the latest cached date and yesterday.
+///
+/// A gap exists when `latest_cached < yesterday - 1 day`, meaning there are
+/// dates between the cache's coverage and the warm path's window that would
+/// never be parsed. When a gap is detected, the parser should fall back to
+/// a full re-parse to fill missing dates.
+fn has_date_gap(latest_cached: Option<chrono::NaiveDate>, yesterday: chrono::NaiveDate) -> bool {
+    match latest_cached {
+        Some(latest) => latest < yesterday - chrono::Duration::days(1),
+        None => false, // No cache → no gap to detect; cold path handles this
+    }
+}
+
 /// Compute the warm-path cutoff: yesterday 00:00:00 local time.
 ///
 /// Files modified on or after this time are re-parsed, ensuring that
@@ -112,14 +125,26 @@ impl DataLoaderService {
             let has_parser_cache = cache_service.cache_path(parser.name()).exists();
 
             let entries = if has_parser_cache {
-                match parser.parse_recent_files(since) {
-                    Ok(e) => e
-                        .into_iter()
-                        .filter(|entry| entry.local_date() >= yesterday)
-                        .collect(),
-                    Err(e) => {
-                        eprintln!("[toktrack] Warning: {} failed: {}", parser.name(), e);
-                        continue;
+                let latest = cache_service.latest_cached_date(parser.name());
+                if has_date_gap(latest, yesterday) {
+                    // Gap detected: full re-parse to fill missing dates
+                    match parser.parse_all() {
+                        Ok(e) => e,
+                        Err(e) => {
+                            eprintln!("[toktrack] Warning: {} failed: {}", parser.name(), e);
+                            continue;
+                        }
+                    }
+                } else {
+                    match parser.parse_recent_files(since) {
+                        Ok(e) => e
+                            .into_iter()
+                            .filter(|entry| entry.local_date() >= yesterday)
+                            .collect(),
+                        Err(e) => {
+                            eprintln!("[toktrack] Warning: {} failed: {}", parser.name(), e);
+                            continue;
+                        }
                     }
                 }
             } else {
@@ -588,5 +613,41 @@ mod tests {
         assert_eq!(filtered[1].local_date(), today);
         // The old entry with massive tokens should be gone
         assert!(filtered.iter().all(|e| e.input_tokens < 50_000_000));
+    }
+
+    // ========== gap detection tests ==========
+
+    #[test]
+    fn test_has_date_gap_no_gap() {
+        // latest_cached = yesterday - 1 → warm path covers [yesterday, today] → no gap
+        let today = Local::now().date_naive();
+        let latest_cached = today - chrono::Duration::days(2); // day before yesterday
+        let yesterday = today - chrono::Duration::days(1);
+        assert!(!has_date_gap(Some(latest_cached), yesterday));
+    }
+
+    #[test]
+    fn test_has_date_gap_with_gap() {
+        // latest_cached = yesterday - 2 → gap of 1 day between cache and warm path
+        let today = Local::now().date_naive();
+        let latest_cached = today - chrono::Duration::days(3); // 2 days before yesterday
+        let yesterday = today - chrono::Duration::days(1);
+        assert!(has_date_gap(Some(latest_cached), yesterday));
+    }
+
+    #[test]
+    fn test_has_date_gap_none_latest() {
+        // No cached date → no gap to detect (cold path handles this)
+        let today = Local::now().date_naive();
+        let yesterday = today - chrono::Duration::days(1);
+        assert!(!has_date_gap(None, yesterday));
+    }
+
+    #[test]
+    fn test_has_date_gap_latest_is_yesterday() {
+        // latest_cached = yesterday → warm path covers [yesterday, today] → no gap
+        let today = Local::now().date_naive();
+        let yesterday = today - chrono::Duration::days(1);
+        assert!(!has_date_gap(Some(yesterday), yesterday));
     }
 }
