@@ -34,9 +34,27 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
+/// Emit a line with │ borders, padding/truncating content to exactly `w` chars.
+/// This guarantees the box never breaks regardless of content length.
+fn boxed_line(out: &mut String, w: usize, content: &str) {
+    let char_count = content.chars().count();
+    if char_count >= w {
+        // Truncate to fit
+        let truncated: String = content.chars().take(w).collect();
+        out.push_str(&format!("\u{2502}{}\u{2502}\n", truncated));
+    } else {
+        // Pad with spaces
+        out.push_str(&format!(
+            "\u{2502}{}{}\u{2502}\n",
+            content,
+            " ".repeat(w - char_count)
+        ));
+    }
+}
+
 /// Render report data as a terminal text receipt
 pub fn render(data: &ReportData) -> String {
-    let w = 48usize;
+    let w = 60usize;
     let mut out = String::new();
 
     // Top border
@@ -73,14 +91,15 @@ pub fn render(data: &ReportData) -> String {
     // By Model
     if !data.by_model.is_empty() {
         out.push_str(&format!("\u{2502}{}\u{2502}\n", "\u{2508}".repeat(w)));
-        section_title(&mut out, w, "BY MODEL");
+        boxed_line(&mut out, w, " BY MODEL");
 
         let max_cost = data
             .by_model
             .iter()
             .map(|m| m.cost_usd)
             .fold(0.0_f64, f64::max);
-        let bar_width = 16;
+        // Reserve space: 3 indent + 18 name + 2 gap + 9 cost + 1 gap + 7 tokens + 2 gap + bar
+        let bar_width = w.saturating_sub(42);
 
         for model in &data.by_model {
             let ratio = if max_cost > 0.0 {
@@ -89,55 +108,42 @@ pub fn render(data: &ReportData) -> String {
                 0.0
             };
             let bar = render_bar(ratio, bar_width);
-            let name = truncate(&model.name, 14);
+            let name = truncate(&model.name, 18);
             let cost = format_cost(model.cost_usd);
             let tokens = format_tokens(model.input_tokens.saturating_add(model.output_tokens));
 
-            // "  name           $cost  tokens bar   "
-            let bar_chars = bar.chars().count();
-            let remaining = w.saturating_sub(33 + bar_chars);
-            out.push_str(&format!(
-                "\u{2502}  {:<14} {:>8} {:>6} {}{}\u{2502}\n",
-                name,
-                cost,
-                tokens,
-                bar,
-                " ".repeat(remaining)
-            ));
+            let content = format!("   {:<18}  {:>9} {:>7}  {}", name, cost, tokens, bar);
+            boxed_line(&mut out, w, &content);
         }
     }
 
     // By Source
     if !data.by_source.is_empty() {
         out.push_str(&format!("\u{2502}{}\u{2502}\n", "\u{2508}".repeat(w)));
-        section_title(&mut out, w, "BY SOURCE");
+        boxed_line(&mut out, w, " BY SOURCE");
 
         for source in &data.by_source {
-            let name = truncate(&source.name, 14);
+            let name = truncate(&source.name, 18);
             let cost = format_cost(source.cost_usd);
             let tokens = format_tokens(source.total_tokens);
-            let remaining = w.saturating_sub(32);
-            out.push_str(&format!(
-                "\u{2502}  {:<14} {:>8} {:>6}{}\u{2502}\n",
-                name,
-                cost,
-                tokens,
-                " ".repeat(remaining)
-            ));
+
+            let content = format!("   {:<18}  {:>9} {:>7}", name, cost, tokens);
+            boxed_line(&mut out, w, &content);
         }
     }
 
     // Daily
     if !data.daily.is_empty() {
         out.push_str(&format!("\u{2502}{}\u{2502}\n", "\u{2508}".repeat(w)));
-        section_title(&mut out, w, "DAILY BREAKDOWN");
+        boxed_line(&mut out, w, " DAILY BREAKDOWN");
 
         let max_cost = data
             .daily
             .iter()
             .map(|d| d.cost_usd)
             .fold(0.0_f64, f64::max);
-        let bar_width = 16;
+        // Reserve space: 3 indent + 5 date + 2 gap + 9 cost + 2 gap + bar
+        let bar_width = w.saturating_sub(21);
 
         for day in &data.daily {
             let date_str = day.date.format("%m/%d").to_string();
@@ -148,15 +154,9 @@ pub fn render(data: &ReportData) -> String {
                 0.0
             };
             let bar = render_bar(ratio, bar_width);
-            let bar_chars = bar.chars().count();
-            let remaining = w.saturating_sub(16 + bar_chars + 1);
-            out.push_str(&format!(
-                "\u{2502}  {} {:>8} {}{}\u{2502}\n",
-                date_str,
-                cost,
-                bar,
-                " ".repeat(remaining)
-            ));
+
+            let content = format!("   {}  {:>9}  {}", date_str, cost, bar);
+            boxed_line(&mut out, w, &content);
         }
     }
 
@@ -193,27 +193,13 @@ fn center_line(out: &mut String, w: usize, text: &str) {
     ));
 }
 
-fn section_title(out: &mut String, w: usize, title: &str) {
-    let remaining = w.saturating_sub(title.len() + 1);
-    out.push_str(&format!(
-        "\u{2502} {}{}\u{2502}\n",
-        title,
-        " ".repeat(remaining)
-    ));
-}
-
 fn kv_line(out: &mut String, w: usize, key: &str, value: &str) {
-    // " key............ value "
+    // " key............ value"
     let key_len = key.len();
     let val_len = value.len();
-    let dots = w.saturating_sub(key_len + val_len + 3); // 2 spaces + 1 padding
-    out.push_str(&format!(
-        "\u{2502} {}{} {:>val_w$}\u{2502}\n",
-        key,
-        ".".repeat(dots),
-        value,
-        val_w = val_len
-    ));
+    let dots = w.saturating_sub(key_len + val_len + 2); // 1 leading space + 1 trailing space
+    let content = format!(" {}{} {}", key, ".".repeat(dots), value);
+    boxed_line(out, w, &content);
 }
 
 #[cfg(test)]
@@ -325,13 +311,10 @@ mod tests {
     fn test_box_drawing_borders() {
         let output = render(&sample_data());
         let lines: Vec<&str> = output.lines().collect();
-        // First line starts with ╭
         assert!(lines[0].starts_with('\u{256d}'));
-        // Last line starts with ╰ and ends with ╯
         let last = lines.last().unwrap();
         assert!(last.starts_with('\u{2570}'));
         assert!(last.ends_with('\u{256f}'));
-        // Middle lines have │ borders
         for line in &lines[1..lines.len() - 1] {
             assert!(
                 line.starts_with('\u{2502}'),
@@ -339,6 +322,63 @@ mod tests {
                 line
             );
             assert!(line.ends_with('\u{2502}'), "Missing right border: {}", line);
+        }
+    }
+
+    #[test]
+    fn test_all_lines_same_width() {
+        let output = render(&sample_data());
+        let lines: Vec<&str> = output.lines().collect();
+        let expected_width = lines[0].chars().count(); // top border sets the width
+        for (i, line) in lines.iter().enumerate() {
+            let line_width = line.chars().count();
+            assert_eq!(
+                line_width, expected_width,
+                "Line {} has width {} but expected {}: {}",
+                i, line_width, expected_width, line
+            );
+        }
+    }
+
+    #[test]
+    fn test_large_cost_does_not_break_box() {
+        let data = ReportData {
+            period_label: "2024-01-01 ~ 2024-01-07".to_string(),
+            total_cost: 99999.99,
+            total_input_tokens: 999_999_999,
+            total_output_tokens: 999_999_999,
+            active_days: 7,
+            total_days: 7,
+            by_model: vec![ModelReport {
+                name: "Very Long Model Name".to_string(),
+                input_tokens: 999_999_999,
+                output_tokens: 999_999_999,
+                cost_usd: 99999.99,
+                count: 999,
+            }],
+            by_source: vec![SourceReport {
+                name: "very-long-source-name".to_string(),
+                total_tokens: 999_999_999,
+                cost_usd: 99999.99,
+            }],
+            daily: vec![DayReport {
+                date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                total_tokens: 999_999_999,
+                cost_usd: 99999.99,
+            }],
+            most_expensive_day: None,
+        };
+        let output = render(&data);
+        let lines: Vec<&str> = output.lines().collect();
+        let expected_width = lines[0].chars().count();
+        for (i, line) in lines.iter().enumerate() {
+            assert_eq!(
+                line.chars().count(),
+                expected_width,
+                "Line {} width mismatch: {}",
+                i,
+                line
+            );
         }
     }
 }
