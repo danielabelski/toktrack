@@ -39,6 +39,7 @@ toktrack (캐시):      ▏ ~0.04초 (일상 사용)
 - **초고속 파싱** — simd-json + rayon 병렬 처리 (~3 GiB/s 처리량)
 - **TUI 대시보드** — 3개 탭 (Overview, Stats, Models), 일별/주별/월별 뷰
 - **CLI 명령어** — `daily`, `weekly`, `monthly`, `stats` (JSON 출력 지원)
+- **사용량 리포트** — 공유 가능한 텍스트 & SVG 영수증 (`toktrack report`)
 - **멀티 CLI 지원** — Claude Code, Codex CLI, Gemini CLI, OpenCode 한 곳에서
 - **데이터 보존** — CLI 데이터 삭제 후에도 비용 기록 유지
 
@@ -105,6 +106,12 @@ toktrack daily --json
 toktrack weekly --json
 toktrack monthly --json
 toktrack stats --json
+
+# 사용량 리포트 (공유용 영수증)
+toktrack report              # 최근 7일 (텍스트)
+toktrack report --month      # 최근 30일
+toktrack report --days 14    # 최근 N일
+toktrack report --svg        # 텍스트 + SVG 파일
 ```
 
 ### 키보드 단축키

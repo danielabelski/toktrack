@@ -43,6 +43,7 @@ toktrack (cached):  ▏ ~0.04s (daily use)
 - **Ultra-Fast Parsing** — simd-json + rayon parallel processing (~3 GiB/s throughput)
 - **TUI Dashboard** — 3 tabs (Overview, Stats, Models) with daily/weekly/monthly views
 - **CLI Commands** — `daily`, `weekly`, `monthly`, `stats` with JSON output support
+- **Usage Reports** — Shareable text & SVG receipts via `toktrack report`
 - **Multi-CLI Support** — Claude Code, Codex CLI, Gemini CLI, OpenCode in one place
 - **Data Preservation** — Cached daily summaries survive CLI data deletion
 
@@ -109,6 +110,12 @@ toktrack daily --json
 toktrack weekly --json
 toktrack monthly --json
 toktrack stats --json
+
+# Usage report (shareable receipt)
+toktrack report              # Last 7 days (text)
+toktrack report --month      # Last 30 days
+toktrack report --days 14    # Last N days
+toktrack report --svg        # Text + SVG file
 ```
 
 ### Keyboard Shortcuts
