@@ -1,9 +1,11 @@
 //! Report data structures and period filtering
 
+use std::collections::HashMap;
+
 use chrono::NaiveDate;
 
 use crate::services::{display_name, Aggregator};
-use crate::types::{DailySummary, SourceUsage};
+use crate::types::DailySummary;
 
 /// A single model's aggregated report
 #[derive(Debug, Clone)]
@@ -49,10 +51,11 @@ pub struct ReportData {
 }
 
 impl ReportData {
-    /// Build report data from summaries filtered to [start, end]
+    /// Build report data from summaries filtered to [start, end].
+    /// `source_summaries` maps source name → per-source daily summaries (for period filtering).
     pub fn from_summaries(
         summaries: &[DailySummary],
-        source_usage: &[SourceUsage],
+        source_summaries: &HashMap<String, Vec<DailySummary>>,
         start: NaiveDate,
         end: NaiveDate,
     ) -> Self {
@@ -126,13 +129,30 @@ impl ReportData {
             .collect();
         by_model.sort_by(|a, b| b.cost_usd.total_cmp(&a.cost_usd));
 
-        // Build source reports
-        let mut by_source: Vec<SourceReport> = source_usage
+        // Build source reports (filtered to period)
+        let mut by_source: Vec<SourceReport> = source_summaries
             .iter()
-            .map(|s| SourceReport {
-                name: s.source.clone(),
-                total_tokens: s.total_tokens,
-                cost_usd: s.total_cost_usd,
+            .filter_map(|(source_name, daily_summaries)| {
+                let filtered_source: Vec<&DailySummary> = daily_summaries
+                    .iter()
+                    .filter(|s| s.date >= start && s.date <= end)
+                    .collect();
+                if filtered_source.is_empty() {
+                    return None;
+                }
+                let mut total_tokens: u64 = 0;
+                let mut cost = 0.0;
+                for s in &filtered_source {
+                    total_tokens = total_tokens
+                        .saturating_add(s.total_input_tokens)
+                        .saturating_add(s.total_output_tokens);
+                    cost += s.total_cost_usd;
+                }
+                Some(SourceReport {
+                    name: source_name.clone(),
+                    total_tokens,
+                    cost_usd: cost,
+                })
             })
             .collect();
         by_source.sort_by(|a, b| b.cost_usd.total_cmp(&a.cost_usd));
@@ -186,7 +206,7 @@ mod tests {
     fn test_empty_data() {
         let data = ReportData::from_summaries(
             &[],
-            &[],
+            &HashMap::new(),
             NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
             NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),
         );
@@ -201,7 +221,7 @@ mod tests {
         let summaries = vec![make_summary(2024, 1, 5, 1.50)];
         let data = ReportData::from_summaries(
             &summaries,
-            &[],
+            &HashMap::new(),
             NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
             NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),
         );
@@ -224,7 +244,7 @@ mod tests {
         ];
         let data = ReportData::from_summaries(
             &summaries,
-            &[],
+            &HashMap::new(),
             NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
             NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),
         );
@@ -250,7 +270,7 @@ mod tests {
         ];
         let data = ReportData::from_summaries(
             &summaries,
-            &[],
+            &HashMap::new(),
             NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
             NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),
         );
@@ -293,7 +313,7 @@ mod tests {
         }];
         let data = ReportData::from_summaries(
             &summaries,
-            &[],
+            &HashMap::new(),
             NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
             NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),
         );
@@ -302,36 +322,57 @@ mod tests {
     }
 
     #[test]
-    fn test_source_reports() {
-        let sources = vec![
-            SourceUsage {
-                source: "claude".to_string(),
-                total_tokens: 5000,
-                total_cost_usd: 3.00,
-            },
-            SourceUsage {
-                source: "codex".to_string(),
-                total_tokens: 2000,
-                total_cost_usd: 1.00,
-            },
-        ];
+    fn test_source_reports_filtered_by_period() {
+        let mut source_summaries = HashMap::new();
+        source_summaries.insert(
+            "claude".to_string(),
+            vec![
+                make_summary(2024, 1, 5, 3.00),   // in range
+                make_summary(2024, 1, 20, 50.00), // out of range
+            ],
+        );
+        source_summaries.insert(
+            "codex".to_string(),
+            vec![make_summary(2024, 1, 3, 1.00)], // in range
+        );
         let summaries = vec![make_summary(2024, 1, 5, 4.00)];
         let data = ReportData::from_summaries(
             &summaries,
-            &sources,
+            &source_summaries,
             NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
             NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),
         );
         assert_eq!(data.by_source.len(), 2);
+        // claude: only the in-range entry ($3.00), not the $50 one
         assert_eq!(data.by_source[0].name, "claude");
+        assert!((data.by_source[0].cost_usd - 3.00).abs() < f64::EPSILON);
         assert_eq!(data.by_source[1].name, "codex");
+        assert!((data.by_source[1].cost_usd - 1.00).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_source_reports_excludes_empty_sources() {
+        let mut source_summaries = HashMap::new();
+        source_summaries.insert("claude".to_string(), vec![make_summary(2024, 1, 5, 3.00)]);
+        source_summaries.insert(
+            "codex".to_string(),
+            vec![make_summary(2024, 2, 1, 10.00)], // entirely out of range
+        );
+        let data = ReportData::from_summaries(
+            &[make_summary(2024, 1, 5, 3.00)],
+            &source_summaries,
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),
+        );
+        assert_eq!(data.by_source.len(), 1);
+        assert_eq!(data.by_source[0].name, "claude");
     }
 
     #[test]
     fn test_period_label_format() {
         let data = ReportData::from_summaries(
             &[],
-            &[],
+            &HashMap::new(),
             NaiveDate::from_ymd_opt(2024, 3, 1).unwrap(),
             NaiveDate::from_ymd_opt(2024, 3, 7).unwrap(),
         );

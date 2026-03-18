@@ -149,7 +149,7 @@ fn run_report(_week: bool, month: bool, days: Option<u32>, svg: Option<PathBuf>)
     let end = today;
 
     let result = load_data_full()?;
-    let data = ReportData::from_summaries(&result.summaries, &result.source_usage, start, end);
+    let data = ReportData::from_summaries(&result.summaries, &result.source_summaries, start, end);
 
     // Always print text report
     println!("{}", crate::report::text::render(&data));
