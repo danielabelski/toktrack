@@ -199,6 +199,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: cost,
             count: 1,
         }

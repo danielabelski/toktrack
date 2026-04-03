@@ -77,6 +77,12 @@ pub struct UsageEntry {
     pub cache_creation_tokens: u64,
     #[serde(default)]
     pub thinking_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_5m_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_1h_tokens: u64,
+    #[serde(default)]
+    pub web_search_requests: u64,
     pub cost_usd: Option<f64>,
     pub message_id: Option<String>,
     pub request_id: Option<String>,
@@ -127,6 +133,12 @@ pub struct DailySummary {
     pub total_cache_creation_tokens: u64,
     #[serde(default)]
     pub total_thinking_tokens: u64,
+    #[serde(default)]
+    pub total_cache_creation_5m_tokens: u64,
+    #[serde(default)]
+    pub total_cache_creation_1h_tokens: u64,
+    #[serde(default)]
+    pub total_web_search_requests: u64,
     pub total_cost_usd: f64,
     pub models: HashMap<String, ModelUsage>,
 }
@@ -139,6 +151,12 @@ pub struct ModelUsage {
     pub cache_creation_tokens: u64,
     #[serde(default)]
     pub thinking_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_5m_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_1h_tokens: u64,
+    #[serde(default)]
+    pub web_search_requests: u64,
     pub cost_usd: f64,
     pub count: u64,
 }
@@ -154,6 +172,15 @@ impl ModelUsage {
             .cache_creation_tokens
             .saturating_add(entry.cache_creation_tokens);
         self.thinking_tokens = self.thinking_tokens.saturating_add(entry.thinking_tokens);
+        self.cache_creation_5m_tokens = self
+            .cache_creation_5m_tokens
+            .saturating_add(entry.cache_creation_5m_tokens);
+        self.cache_creation_1h_tokens = self
+            .cache_creation_1h_tokens
+            .saturating_add(entry.cache_creation_1h_tokens);
+        self.web_search_requests = self
+            .web_search_requests
+            .saturating_add(entry.web_search_requests);
         self.cost_usd += cost;
         self.count = self.count.saturating_add(1);
     }
@@ -167,6 +194,12 @@ pub struct TotalSummary {
     pub total_cache_creation_tokens: u64,
     #[serde(default)]
     pub total_thinking_tokens: u64,
+    #[serde(default)]
+    pub total_cache_creation_5m_tokens: u64,
+    #[serde(default)]
+    pub total_cache_creation_1h_tokens: u64,
+    #[serde(default)]
+    pub total_web_search_requests: u64,
     pub total_cost_usd: f64,
     pub entry_count: u64,
     pub day_count: u64,
@@ -202,6 +235,9 @@ mod tests {
             total_cache_read_tokens: cache_read,
             total_cache_creation_tokens: cache_creation,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: cost,
             models: HashMap::new(),
         }
@@ -282,6 +318,9 @@ mod tests {
             cache_read_tokens: 20,
             cache_creation_tokens: 10,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: None,
             request_id: None,
@@ -301,6 +340,9 @@ mod tests {
             cache_read_tokens: 20,
             cache_creation_tokens: 10,
             thinking_tokens: 30,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: None,
             request_id: None,
@@ -320,6 +362,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: Some("msg123".into()),
             request_id: Some("req456".into()),
@@ -339,6 +384,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: None,
             request_id: Some("req456".into()),
@@ -358,6 +406,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: Some("msg789".into()),
             request_id: None,
@@ -382,6 +433,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: None,
             request_id: None,
@@ -406,6 +460,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: None,
             request_id: None,
@@ -432,6 +489,9 @@ mod tests {
             cache_read_tokens: 20,
             cache_creation_tokens: 10,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: None,
             message_id: None,
             request_id: None,

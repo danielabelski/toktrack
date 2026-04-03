@@ -33,6 +33,15 @@ fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, 
                 existing.thinking_tokens = existing
                     .thinking_tokens
                     .saturating_add(usage.thinking_tokens);
+                existing.cache_creation_5m_tokens = existing
+                    .cache_creation_5m_tokens
+                    .saturating_add(usage.cache_creation_5m_tokens);
+                existing.cache_creation_1h_tokens = existing
+                    .cache_creation_1h_tokens
+                    .saturating_add(usage.cache_creation_1h_tokens);
+                existing.web_search_requests = existing
+                    .web_search_requests
+                    .saturating_add(usage.web_search_requests);
                 existing.cost_usd += usage.cost_usd;
                 existing.count = existing.count.saturating_add(usage.count);
             })
@@ -43,7 +52,7 @@ fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, 
 
 /// Bump when aggregation logic changes (e.g., timezone fix).
 /// Mismatched version → full cache invalidation.
-const CACHE_VERSION: u32 = 10;
+const CACHE_VERSION: u32 = 11;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DailySummaryCache {
@@ -313,6 +322,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: cost,
             message_id: None,
             request_id: None,
@@ -361,6 +373,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 9.99,
             models: HashMap::new(),
         };
@@ -384,6 +399,9 @@ mod tests {
                 cache_read_tokens: 0,
                 cache_creation_tokens: 0,
                 thinking_tokens: 0,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1h_tokens: 0,
+                web_search_requests: 0,
                 cost_usd: Some(0.01),
                 message_id: None,
                 request_id: None,
@@ -398,6 +416,9 @@ mod tests {
                 cache_read_tokens: 0,
                 cache_creation_tokens: 0,
                 thinking_tokens: 0,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1h_tokens: 0,
+                web_search_requests: 0,
                 cost_usd: Some(0.02),
                 message_id: None,
                 request_id: None,
@@ -464,6 +485,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 9.99,
             models: HashMap::new(),
         };
@@ -486,6 +510,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: Some(0.01),
             message_id: None,
             request_id: None,
@@ -533,6 +560,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 0.005,
             models: HashMap::new(),
         };
@@ -555,6 +585,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: Some(0.02),
             message_id: None,
             request_id: None,
@@ -645,6 +678,9 @@ mod tests {
                 cache_read_tokens: 0,
                 cache_creation_tokens: 0,
                 thinking_tokens: 0,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1h_tokens: 0,
+                web_search_requests: 0,
                 cost_usd: 0.10,
                 count: 1,
             },
@@ -657,6 +693,9 @@ mod tests {
                 cache_read_tokens: 0,
                 cache_creation_tokens: 0,
                 thinking_tokens: 0,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1h_tokens: 0,
+                web_search_requests: 0,
                 cost_usd: 0.20,
                 count: 2,
             },
@@ -669,6 +708,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 0.30,
             models,
         };
@@ -758,6 +800,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 0.50,
             models: HashMap::new(),
         };
@@ -872,6 +917,9 @@ mod tests {
                     total_cache_read_tokens: 0,
                     total_cache_creation_tokens: 0,
                     total_thinking_tokens: 0,
+                    total_cache_creation_5m_tokens: 0,
+                    total_cache_creation_1h_tokens: 0,
+                    total_web_search_requests: 0,
                     total_cost_usd: 0.01,
                     models: HashMap::new(),
                 },
@@ -882,6 +930,9 @@ mod tests {
                     total_cache_read_tokens: 0,
                     total_cache_creation_tokens: 0,
                     total_thinking_tokens: 0,
+                    total_cache_creation_5m_tokens: 0,
+                    total_cache_creation_1h_tokens: 0,
+                    total_web_search_requests: 0,
                     total_cost_usd: 0.02,
                     models: HashMap::new(),
                 },
@@ -892,6 +943,9 @@ mod tests {
                     total_cache_read_tokens: 0,
                     total_cache_creation_tokens: 0,
                     total_thinking_tokens: 0,
+                    total_cache_creation_5m_tokens: 0,
+                    total_cache_creation_1h_tokens: 0,
+                    total_web_search_requests: 0,
                     total_cost_usd: 0.015,
                     models: HashMap::new(),
                 },

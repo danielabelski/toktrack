@@ -41,6 +41,14 @@ pub struct ModelPricing {
     pub cache_read_input_token_cost_above_200k_tokens: Option<f64>,
     #[serde(default)]
     pub cache_creation_input_token_cost_above_200k_tokens: Option<f64>,
+    // Cache TTL-specific pricing (for Bedrock/Vertex)
+    #[serde(default)]
+    pub cache_creation_5m_token_cost: Option<f64>,
+    #[serde(default)]
+    pub cache_creation_1h_token_cost: Option<f64>,
+    // Web search pricing
+    #[serde(default)]
+    pub web_search_cost_per_request: Option<f64>,
 }
 
 /// Cached pricing data
@@ -77,11 +85,35 @@ fn tiered_cost(tokens: u64, base_price: f64, tiered_price: Option<f64>) -> f64 {
     below + above
 }
 
+/// Custom pricing configuration from ~/.toktrack/pricing.toml
+/// All costs are in $/1M tokens (converted to per-token internally)
+#[derive(Debug, Deserialize)]
+struct CustomPricingConfig {
+    models: Option<HashMap<String, CustomModelPricing>>,
+    global: Option<GlobalPricing>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CustomModelPricing {
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_creation: Option<f64>,
+    cache_read: Option<f64>,
+    cache_creation_5m: Option<f64>,
+    cache_creation_1h: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GlobalPricing {
+    web_search_per_request: Option<f64>,
+}
+
 /// Pricing service for calculating token costs
 pub struct PricingService {
     cache: PricingCache,
     #[allow(dead_code)]
     cache_path: PathBuf,
+    custom: Option<CustomPricingConfig>,
 }
 
 impl PricingService {
@@ -94,16 +126,26 @@ impl PricingService {
     /// Create a new PricingService with a custom cache path
     pub fn with_cache_path(cache_path: PathBuf) -> Result<Self> {
         let cache = Self::load_or_fetch_cache(&cache_path)?;
-        Ok(Self { cache, cache_path })
+        let custom = Self::load_custom_pricing();
+        Ok(Self {
+            cache,
+            cache_path,
+            custom,
+        })
     }
 
     /// Create a PricingService, preferring cache but refreshing if expired or corrupt.
     /// Returns None only if no cache exists AND network fetch fails.
     pub fn from_cache_only() -> Option<Self> {
         let cache_path = Self::default_cache_path().ok()?;
+        let custom = Self::load_custom_pricing();
 
         match Self::load_cache(&cache_path) {
-            Ok(cache) if !cache.is_expired() => Some(Self { cache, cache_path }),
+            Ok(cache) if !cache.is_expired() => Some(Self {
+                cache,
+                cache_path,
+                custom,
+            }),
             Ok(cache) => {
                 // Expired → try refresh, fallback to expired cache
                 if let Ok(fresh) = Self::fetch_pricing() {
@@ -111,9 +153,14 @@ impl PricingService {
                     Some(Self {
                         cache: fresh,
                         cache_path,
+                        custom,
                     })
                 } else {
-                    Some(Self { cache, cache_path })
+                    Some(Self {
+                        cache,
+                        cache_path,
+                        custom,
+                    })
                 }
             }
             Err(_) => {
@@ -123,6 +170,7 @@ impl PricingService {
                     Some(Self {
                         cache: fresh,
                         cache_path,
+                        custom,
                     })
                 } else {
                     None
@@ -138,6 +186,7 @@ impl PricingService {
         Some(Self {
             cache,
             cache_path: cache_path.clone(),
+            custom: None,
         })
     }
 
@@ -148,6 +197,55 @@ impl PricingService {
             .home_dir()
             .to_path_buf();
         Ok(home.join(".toktrack").join("pricing.json"))
+    }
+
+    /// Load custom pricing from ~/.toktrack/pricing.toml
+    fn load_custom_pricing() -> Option<CustomPricingConfig> {
+        let home = directories::UserDirs::new()?.home_dir().to_path_buf();
+        let path = home.join(".toktrack").join("pricing.toml");
+        let content = fs::read_to_string(&path).ok()?;
+        match toml::from_str::<CustomPricingConfig>(&content) {
+            Ok(config) => Some(config),
+            Err(e) => {
+                eprintln!(
+                    "[toktrack] Warning: Failed to parse {}: {}",
+                    path.display(),
+                    e
+                );
+                None
+            }
+        }
+    }
+
+    /// Load custom pricing from a specific path (for testing)
+    #[allow(dead_code)]
+    fn with_custom_pricing(mut self, custom: Option<CustomPricingConfig>) -> Self {
+        self.custom = custom;
+        self
+    }
+
+    /// Get custom model pricing as ModelPricing (converting $/1M to $/token)
+    fn get_custom_pricing(&self, model: &str) -> Option<ModelPricing> {
+        let custom = self.custom.as_ref()?;
+        let models = custom.models.as_ref()?;
+        let custom_model = models.get(model)?;
+
+        let to_per_token = |v: Option<f64>| v.map(|x| x / 1_000_000.0);
+
+        Some(ModelPricing {
+            input_cost_per_token: to_per_token(custom_model.input),
+            output_cost_per_token: to_per_token(custom_model.output),
+            cache_creation_input_token_cost: to_per_token(custom_model.cache_creation),
+            cache_read_input_token_cost: to_per_token(custom_model.cache_read),
+            cache_creation_5m_token_cost: to_per_token(custom_model.cache_creation_5m),
+            cache_creation_1h_token_cost: to_per_token(custom_model.cache_creation_1h),
+            // Tiered pricing not supported in custom config (use flat rates)
+            input_cost_per_token_above_200k_tokens: None,
+            output_cost_per_token_above_200k_tokens: None,
+            cache_read_input_token_cost_above_200k_tokens: None,
+            cache_creation_input_token_cost_above_200k_tokens: None,
+            web_search_cost_per_request: None,
+        })
     }
 
     /// Load cache from disk or fetch fresh data
@@ -232,9 +330,14 @@ impl PricingService {
             None => return 0.0,
         };
 
-        let pricing = match self.get_pricing(model) {
-            Some(p) => p,
-            None => return 0.0,
+        // Custom pricing takes precedence over LiteLLM
+        let custom = self.get_custom_pricing(model);
+        let litellm = self.get_pricing(model);
+
+        let pricing = match (&custom, litellm) {
+            (Some(c), _) => c,
+            (None, Some(l)) => l,
+            (None, None) => return 0.0,
         };
 
         let input = tiered_cost(
@@ -252,13 +355,50 @@ impl PricingService {
             pricing.cache_read_input_token_cost.unwrap_or(0.0),
             pricing.cache_read_input_token_cost_above_200k_tokens,
         );
-        let cache_creation = tiered_cost(
-            entry.cache_creation_tokens,
-            pricing.cache_creation_input_token_cost.unwrap_or(0.0),
-            pricing.cache_creation_input_token_cost_above_200k_tokens,
-        );
 
-        input + output + cache_read + cache_creation
+        // Cache creation: use TTL-specific pricing only when entry has TTL breakdown
+        let has_ttl_pricing = pricing.cache_creation_5m_token_cost.is_some()
+            || pricing.cache_creation_1h_token_cost.is_some();
+        let has_ttl_tokens =
+            entry.cache_creation_5m_tokens > 0 || entry.cache_creation_1h_tokens > 0;
+
+        let cache_creation = if has_ttl_pricing && has_ttl_tokens {
+            let cost_5m = entry.cache_creation_5m_tokens as f64
+                * pricing
+                    .cache_creation_5m_token_cost
+                    .unwrap_or(pricing.cache_creation_input_token_cost.unwrap_or(0.0));
+            let cost_1h = entry.cache_creation_1h_tokens as f64
+                * pricing
+                    .cache_creation_1h_token_cost
+                    .unwrap_or(pricing.cache_creation_input_token_cost.unwrap_or(0.0));
+            cost_5m + cost_1h
+        } else {
+            tiered_cost(
+                entry.cache_creation_tokens,
+                pricing.cache_creation_input_token_cost.unwrap_or(0.0),
+                pricing.cache_creation_input_token_cost_above_200k_tokens,
+            )
+        };
+
+        // Web search cost
+        let web_search_cost = self.get_web_search_cost(entry, pricing);
+
+        input + output + cache_read + cache_creation + web_search_cost
+    }
+
+    /// Get web search cost per request (custom global override > pricing per model)
+    fn get_web_search_cost(&self, entry: &UsageEntry, pricing: &ModelPricing) -> f64 {
+        if entry.web_search_requests == 0 {
+            return 0.0;
+        }
+        let cost_per_request = self
+            .custom
+            .as_ref()
+            .and_then(|c| c.global.as_ref())
+            .and_then(|g| g.web_search_per_request)
+            .or(pricing.web_search_cost_per_request)
+            .unwrap_or(0.0);
+        entry.web_search_requests as f64 * cost_per_request
     }
 
     /// Get pricing for a model (exact → normalized → fuzzy substring)
@@ -335,12 +475,40 @@ mod tests {
             cache_read_tokens: cache_read,
             cache_creation_tokens: cache_creation,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd,
             message_id: None,
             request_id: None,
             source: None,
             provider: None,
         }
+    }
+
+    fn create_mock_cache(cache_path: &std::path::Path) {
+        let mut models = HashMap::new();
+        models.insert(
+            "claude-sonnet-4".to_string(),
+            ModelPricing {
+                input_cost_per_token: Some(0.000003),
+                output_cost_per_token: Some(0.000015),
+                cache_read_input_token_cost: Some(0.0000003),
+                cache_creation_input_token_cost: Some(0.00000375),
+                ..Default::default()
+            },
+        );
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let cache = PricingCache {
+            fetched_at: now,
+            models,
+        };
+        let content = serde_json::to_string_pretty(&cache).unwrap();
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(cache_path, content).unwrap();
     }
 
     fn create_test_service() -> (PricingService, TempDir) {
@@ -381,6 +549,7 @@ mod tests {
                 output_cost_per_token_above_200k_tokens: Some(0.00015), // $150 per 1M tokens
                 cache_read_input_token_cost_above_200k_tokens: Some(0.000003), // $3 per 1M tokens
                 cache_creation_input_token_cost_above_200k_tokens: Some(0.0000375), // $37.50 per 1M tokens
+                ..Default::default()
             },
         );
 
@@ -917,5 +1086,258 @@ mod tests {
             expected,
             cost
         );
+    }
+
+    // ========== Custom pricing tests ==========
+
+    #[test]
+    fn test_custom_pricing_overrides_litellm() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let custom = CustomPricingConfig {
+            models: Some(HashMap::from([(
+                "claude-sonnet-4".to_string(),
+                CustomModelPricing {
+                    input: Some(5.0),     // $5/1M (vs LiteLLM $3/1M)
+                    output: Some(20.0),   // $20/1M (vs LiteLLM $15/1M)
+                    cache_creation: None, // fallback to LiteLLM: not used since custom takes full precedence
+                    cache_read: None,
+                    cache_creation_5m: None,
+                    cache_creation_1h: None,
+                },
+            )])),
+            global: None,
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        let entry = make_entry(Some("claude-sonnet-4"), 1_000_000, 500_000, 0, 0, None);
+        let cost = service.calculate_cost(&entry);
+
+        // Custom: input=$5/1M * 1M + output=$20/1M * 0.5M = $5 + $10 = $15
+        let expected = 5.0 + 10.0;
+        assert!(
+            (cost - expected).abs() < 1e-6,
+            "Custom pricing override failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_custom_pricing_no_model_falls_back_to_litellm() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let custom = CustomPricingConfig {
+            models: Some(HashMap::from([(
+                "some-other-model".to_string(),
+                CustomModelPricing {
+                    input: Some(99.0),
+                    output: None,
+                    cache_creation: None,
+                    cache_read: None,
+                    cache_creation_5m: None,
+                    cache_creation_1h: None,
+                },
+            )])),
+            global: None,
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        // claude-sonnet-4 not in custom → should use LiteLLM pricing
+        let entry = make_entry(Some("claude-sonnet-4"), 1_000_000, 0, 0, 0, None);
+        let cost = service.calculate_cost(&entry);
+
+        // LiteLLM: $3/1M * 1M = $3
+        let expected = 3.0;
+        assert!(
+            (cost - expected).abs() < 1e-6,
+            "Fallback to LiteLLM failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_custom_pricing_cache_ttl_tiers() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let custom = CustomPricingConfig {
+            models: Some(HashMap::from([(
+                "claude-sonnet-4".to_string(),
+                CustomModelPricing {
+                    input: Some(3.0),
+                    output: Some(15.0),
+                    cache_creation: Some(3.75),
+                    cache_read: Some(0.30),
+                    cache_creation_5m: Some(3.75), // same as base
+                    cache_creation_1h: Some(6.0),  // 1.6x multiplier
+                },
+            )])),
+            global: None,
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        let mut entry = make_entry(Some("claude-sonnet-4"), 0, 0, 0, 0, None);
+        entry.cache_creation_5m_tokens = 100_000;
+        entry.cache_creation_1h_tokens = 100_000;
+
+        let cost = service.calculate_cost(&entry);
+
+        // 5m: 100k * $3.75/1M = $0.375
+        // 1h: 100k * $6.0/1M  = $0.60
+        let expected = 0.375 + 0.60;
+        assert!(
+            (cost - expected).abs() < 1e-6,
+            "TTL tier pricing failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_ttl_pricing_falls_back_to_flat_for_historical_entries() {
+        // Historical entries have cache_creation_tokens but no TTL breakdown
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let custom = CustomPricingConfig {
+            models: Some(HashMap::from([(
+                "claude-sonnet-4".to_string(),
+                CustomModelPricing {
+                    input: Some(3.0),
+                    output: Some(15.0),
+                    cache_creation: Some(3.75),
+                    cache_read: Some(0.30),
+                    cache_creation_5m: Some(3.75),
+                    cache_creation_1h: Some(6.0),
+                },
+            )])),
+            global: None,
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        // Entry with flat cache_creation but NO TTL breakdown (historical)
+        let entry = make_entry(Some("claude-sonnet-4"), 0, 0, 0, 100_000, None);
+        let cost = service.calculate_cost(&entry);
+
+        // Should use flat rate: 100k * $3.75/1M = $0.375
+        let expected = 100_000.0 * (3.75 / 1_000_000.0);
+        assert!(
+            (cost - expected).abs() < 1e-6,
+            "Historical entry should use flat cache_creation rate, expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_web_search_cost_with_global_override() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let custom = CustomPricingConfig {
+            models: None,
+            global: Some(GlobalPricing {
+                web_search_per_request: Some(0.02), // $0.02 per search
+            }),
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        let mut entry = make_entry(Some("claude-sonnet-4"), 0, 0, 0, 0, None);
+        entry.web_search_requests = 5;
+
+        let cost = service.calculate_cost(&entry);
+
+        // 5 searches * $0.02 = $0.10
+        let expected = 0.10;
+        assert!(
+            (cost - expected).abs() < 1e-6,
+            "Web search cost failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_no_custom_pricing_uses_litellm_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let service = PricingService::from_cache_only_with_path(&cache_path).unwrap();
+
+        // No custom pricing loaded → should use LiteLLM as before
+        let entry = make_entry(Some("claude-sonnet-4"), 1_000, 500, 200, 100, None);
+        let cost = service.calculate_cost(&entry);
+
+        // LiteLLM: input=$3/1M, output=$15/1M, cache_read=$0.30/1M, cache_creation=$3.75/1M
+        let expected =
+            1_000.0 * 0.000003 + 500.0 * 0.000015 + 200.0 * 0.0000003 + 100.0 * 0.00000375;
+
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "LiteLLM-only cost failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_custom_pricing_toml_parsing() {
+        let toml_str = r#"
+[models."claude-opus-4-5-20251101"]
+input = 15.0
+output = 75.0
+cache_creation = 18.75
+cache_read = 0.30
+cache_creation_5m = 18.75
+cache_creation_1h = 30.0
+
+[models."claude-sonnet-4-20250514"]
+input = 3.0
+output = 15.0
+
+[global]
+web_search_per_request = 0.01
+"#;
+
+        let config: CustomPricingConfig = toml::from_str(toml_str).unwrap();
+
+        let models = config.models.unwrap();
+        assert_eq!(models.len(), 2);
+
+        let opus = &models["claude-opus-4-5-20251101"];
+        assert_eq!(opus.input, Some(15.0));
+        assert_eq!(opus.cache_creation_1h, Some(30.0));
+
+        let sonnet = &models["claude-sonnet-4-20250514"];
+        assert_eq!(sonnet.input, Some(3.0));
+        assert_eq!(sonnet.cache_creation_5m, None);
+
+        let global = config.global.unwrap();
+        assert_eq!(global.web_search_per_request, Some(0.01));
     }
 }

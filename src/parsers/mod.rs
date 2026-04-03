@@ -165,8 +165,8 @@ mod tests {
         let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let result = parser.parse_all().unwrap();
         assert!(!result.is_empty());
-        // claude-sample.jsonl (3) + empty.jsonl (0) + multi/*.jsonl (2) = 5
-        assert_eq!(result.len(), 5);
+        // claude-sample.jsonl (4) + empty.jsonl (0) + multi/*.jsonl (2) = 6
+        assert_eq!(result.len(), 6);
     }
 
     #[test]
@@ -182,8 +182,8 @@ mod tests {
         // tests/fixtures has claude-sample.jsonl (3), empty.jsonl (0), multi/*.jsonl (2)
         let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let result = parser.parse_all().unwrap();
-        // empty.jsonl contributes 0 entries, total = 5
-        assert_eq!(result.len(), 5);
+        // empty.jsonl contributes 0 entries, total = 6
+        assert_eq!(result.len(), 6);
     }
 
     #[test]
@@ -194,7 +194,7 @@ mod tests {
         let since = std::time::UNIX_EPOCH;
         let result = parser.parse_recent_files(since).unwrap();
         // Same as parse_all: all files are "recent" relative to epoch
-        assert_eq!(result.len(), 5);
+        assert_eq!(result.len(), 6);
     }
 
     #[test]

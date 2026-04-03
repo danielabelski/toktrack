@@ -631,6 +631,9 @@ mod tests {
             total_cache_read_tokens: cache_read,
             total_cache_creation_tokens: cache_creation,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: cost,
             models: HashMap::new(),
         }
