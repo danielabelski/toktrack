@@ -44,6 +44,7 @@ fs2 = "0.4"
 
 # Terminal theme detection (light/dark background)
 terminal-light = "1"
+toml = "1.1.2"
 
 [dev-dependencies]
 # Benchmarking

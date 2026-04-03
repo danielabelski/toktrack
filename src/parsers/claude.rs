@@ -27,12 +27,25 @@ struct ClaudeMessage<'a> {
     usage: Option<ClaudeUsage>,
 }
 
+#[derive(Deserialize, Default)]
+struct CacheCreationDetail {
+    ephemeral_5m_input_tokens: Option<u64>,
+    ephemeral_1h_input_tokens: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+struct ServerToolUse {
+    web_search_requests: Option<u64>,
+}
+
 #[derive(Deserialize)]
 struct ClaudeUsage {
     input_tokens: u64,
     output_tokens: u64,
     cache_creation_input_tokens: Option<u64>,
     cache_read_input_tokens: Option<u64>,
+    cache_creation: Option<CacheCreationDetail>,
+    server_tool_use: Option<ServerToolUse>,
 }
 
 /// Parser for Claude Code usage data
@@ -88,6 +101,9 @@ impl ClaudeCodeParser {
             }
         };
 
+        let cache_detail = usage.cache_creation.as_ref();
+        let tool_use = usage.server_tool_use.as_ref();
+
         Some(UsageEntry {
             timestamp,
             model: message.model.map(String::from),
@@ -96,6 +112,13 @@ impl ClaudeCodeParser {
             cache_read_tokens: usage.cache_read_input_tokens.unwrap_or(0),
             cache_creation_tokens: usage.cache_creation_input_tokens.unwrap_or(0),
             thinking_tokens: 0,
+            cache_creation_5m_tokens: cache_detail
+                .and_then(|d| d.ephemeral_5m_input_tokens)
+                .unwrap_or(0),
+            cache_creation_1h_tokens: cache_detail
+                .and_then(|d| d.ephemeral_1h_input_tokens)
+                .unwrap_or(0),
+            web_search_requests: tool_use.and_then(|t| t.web_search_requests).unwrap_or(0),
             cost_usd: data.cost_usd,
             message_id: message.id.map(String::from),
             request_id: data.request_id.map(String::from),
@@ -170,8 +193,8 @@ mod tests {
             .parse_file(&fixture_path("claude-sample.jsonl"))
             .unwrap();
 
-        // Should parse 3 assistant messages (skipping user message and invalid line)
-        assert_eq!(entries.len(), 3);
+        // Should parse 4 assistant messages (skipping user message, invalid line, and synthetic)
+        assert_eq!(entries.len(), 4);
     }
 
     #[test]
@@ -226,7 +249,7 @@ mod tests {
             .unwrap();
 
         // Invalid JSON line should be skipped, not cause an error
-        assert_eq!(entries.len(), 3);
+        assert_eq!(entries.len(), 4);
     }
 
     #[test]
@@ -295,5 +318,45 @@ mod tests {
                 .all(|e| e.model != Some("<synthetic>".to_string())),
             "Synthetic model entries should be filtered out"
         );
+    }
+
+    #[test]
+    fn test_parse_cache_ttl_tiers() {
+        let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("claude-sample.jsonl"))
+            .unwrap();
+
+        // Fourth entry has cache_creation with ephemeral_5m and ephemeral_1h
+        let fourth = &entries[3];
+        assert_eq!(fourth.cache_creation_tokens, 5000);
+        assert_eq!(fourth.cache_creation_5m_tokens, 3000);
+        assert_eq!(fourth.cache_creation_1h_tokens, 2000);
+    }
+
+    #[test]
+    fn test_parse_web_search_requests() {
+        let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("claude-sample.jsonl"))
+            .unwrap();
+
+        // Fourth entry has web_search_requests = 3
+        let fourth = &entries[3];
+        assert_eq!(fourth.web_search_requests, 3);
+    }
+
+    #[test]
+    fn test_no_ttl_tiers_defaults_to_zero() {
+        let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("claude-sample.jsonl"))
+            .unwrap();
+
+        // First entry has no cache_creation detail or server_tool_use
+        let first = &entries[0];
+        assert_eq!(first.cache_creation_5m_tokens, 0);
+        assert_eq!(first.cache_creation_1h_tokens, 0);
+        assert_eq!(first.web_search_requests, 0);
     }
 }

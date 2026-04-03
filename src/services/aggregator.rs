@@ -24,6 +24,15 @@ fn accumulate_summary(target: &mut DailySummary, source: &DailySummary) {
     target.total_thinking_tokens = target
         .total_thinking_tokens
         .saturating_add(source.total_thinking_tokens);
+    target.total_cache_creation_5m_tokens = target
+        .total_cache_creation_5m_tokens
+        .saturating_add(source.total_cache_creation_5m_tokens);
+    target.total_cache_creation_1h_tokens = target
+        .total_cache_creation_1h_tokens
+        .saturating_add(source.total_cache_creation_1h_tokens);
+    target.total_web_search_requests = target
+        .total_web_search_requests
+        .saturating_add(source.total_web_search_requests);
     target.total_cost_usd += source.total_cost_usd;
 
     for (model_name, model_usage) in &source.models {
@@ -45,6 +54,15 @@ fn merge_model_usage(target: &mut ModelUsage, source: &ModelUsage) {
     target.thinking_tokens = target
         .thinking_tokens
         .saturating_add(source.thinking_tokens);
+    target.cache_creation_5m_tokens = target
+        .cache_creation_5m_tokens
+        .saturating_add(source.cache_creation_5m_tokens);
+    target.cache_creation_1h_tokens = target
+        .cache_creation_1h_tokens
+        .saturating_add(source.cache_creation_1h_tokens);
+    target.web_search_requests = target
+        .web_search_requests
+        .saturating_add(source.web_search_requests);
     target.cost_usd += source.cost_usd;
     target.count = target.count.saturating_add(source.count);
 }
@@ -70,6 +88,9 @@ impl Aggregator {
                 total_cache_read_tokens: 0,
                 total_cache_creation_tokens: 0,
                 total_thinking_tokens: 0,
+                total_cache_creation_5m_tokens: 0,
+                total_cache_creation_1h_tokens: 0,
+                total_web_search_requests: 0,
                 total_cost_usd: 0.0,
                 models: HashMap::new(),
             });
@@ -89,6 +110,15 @@ impl Aggregator {
             summary.total_thinking_tokens = summary
                 .total_thinking_tokens
                 .saturating_add(entry.thinking_tokens);
+            summary.total_cache_creation_5m_tokens = summary
+                .total_cache_creation_5m_tokens
+                .saturating_add(entry.cache_creation_5m_tokens);
+            summary.total_cache_creation_1h_tokens = summary
+                .total_cache_creation_1h_tokens
+                .saturating_add(entry.cache_creation_1h_tokens);
+            summary.total_web_search_requests = summary
+                .total_web_search_requests
+                .saturating_add(entry.web_search_requests);
             summary.total_cost_usd += cost;
 
             // Update model breakdown
@@ -125,6 +155,9 @@ impl Aggregator {
                 total_cache_read_tokens: 0,
                 total_cache_creation_tokens: 0,
                 total_thinking_tokens: 0,
+                total_cache_creation_5m_tokens: 0,
+                total_cache_creation_1h_tokens: 0,
+                total_web_search_requests: 0,
                 total_cost_usd: 0.0,
                 models: HashMap::new(),
             });
@@ -157,6 +190,9 @@ impl Aggregator {
                 total_cache_read_tokens: 0,
                 total_cache_creation_tokens: 0,
                 total_thinking_tokens: 0,
+                total_cache_creation_5m_tokens: 0,
+                total_cache_creation_1h_tokens: 0,
+                total_web_search_requests: 0,
                 total_cost_usd: 0.0,
                 models: HashMap::new(),
             });
@@ -207,6 +243,15 @@ impl Aggregator {
             summary.total_thinking_tokens = summary
                 .total_thinking_tokens
                 .saturating_add(s.total_thinking_tokens);
+            summary.total_cache_creation_5m_tokens = summary
+                .total_cache_creation_5m_tokens
+                .saturating_add(s.total_cache_creation_5m_tokens);
+            summary.total_cache_creation_1h_tokens = summary
+                .total_cache_creation_1h_tokens
+                .saturating_add(s.total_cache_creation_1h_tokens);
+            summary.total_web_search_requests = summary
+                .total_web_search_requests
+                .saturating_add(s.total_web_search_requests);
             summary.total_cost_usd += s.total_cost_usd;
 
             // entry_count = sum of per-model counts across all daily summaries
@@ -258,6 +303,15 @@ impl Aggregator {
             summary.total_thinking_tokens = summary
                 .total_thinking_tokens
                 .saturating_add(entry.thinking_tokens);
+            summary.total_cache_creation_5m_tokens = summary
+                .total_cache_creation_5m_tokens
+                .saturating_add(entry.cache_creation_5m_tokens);
+            summary.total_cache_creation_1h_tokens = summary
+                .total_cache_creation_1h_tokens
+                .saturating_add(entry.cache_creation_1h_tokens);
+            summary.total_web_search_requests = summary
+                .total_web_search_requests
+                .saturating_add(entry.web_search_requests);
             summary.total_cost_usd += entry.cost_usd.unwrap_or(0.0);
             summary.entry_count = summary.entry_count.saturating_add(1);
 
@@ -320,6 +374,9 @@ impl Aggregator {
                     total_cache_read_tokens: 0,
                     total_cache_creation_tokens: 0,
                     total_thinking_tokens: 0,
+                    total_cache_creation_5m_tokens: 0,
+                    total_cache_creation_1h_tokens: 0,
+                    total_web_search_requests: 0,
                     total_cost_usd: 0.0,
                     models: HashMap::new(),
                 });
@@ -354,6 +411,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: cost,
             message_id: None,
             request_id: None,
@@ -382,6 +442,9 @@ mod tests {
             cache_read_tokens: cache_read,
             cache_creation_tokens: cache_creation,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: cost,
             message_id: None,
             request_id: None,
@@ -655,6 +718,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: cost,
             models: HashMap::new(),
         }
@@ -676,6 +742,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: cost,
             models,
         }
@@ -914,6 +983,9 @@ mod tests {
                 cache_read_tokens: 10,
                 cache_creation_tokens: 5,
                 thinking_tokens: 0,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1h_tokens: 0,
+                web_search_requests: 0,
                 cost_usd: 0.01,
                 count: 3,
             },
@@ -1041,6 +1113,9 @@ mod tests {
             total_cache_read_tokens: 10,
             total_cache_creation_tokens: 5,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 0.01,
             models: HashMap::new(),
         };
@@ -1051,6 +1126,9 @@ mod tests {
             total_cache_read_tokens: 30,
             total_cache_creation_tokens: 15,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 0.02,
             models: HashMap::new(),
         };
@@ -1072,6 +1150,9 @@ mod tests {
             cache_read_tokens: 10,
             cache_creation_tokens: 5,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: 0.01,
             count: 2,
         };
@@ -1081,6 +1162,9 @@ mod tests {
             cache_read_tokens: 20,
             cache_creation_tokens: 10,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: 0.02,
             count: 3,
         };
@@ -1149,6 +1233,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 0.01,
             models: models_target,
         };
@@ -1181,6 +1268,9 @@ mod tests {
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
             total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
             total_cost_usd: 0.025,
             models: models_source,
         };
@@ -1218,6 +1308,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: cost,
             message_id: None,
             request_id: None,
@@ -1244,6 +1337,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: Some(0.01),
             message_id: None,
             request_id: None,
@@ -1258,6 +1354,9 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
             cost_usd: Some(0.02),
             message_id: None,
             request_id: None,
@@ -1308,6 +1407,9 @@ mod tests {
                 cache_read_tokens: 0,
                 cache_creation_tokens: 0,
                 thinking_tokens: 0,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1h_tokens: 0,
+                web_search_requests: 0,
                 cost_usd: Some(0.01),
                 message_id: None,
                 request_id: None,
@@ -1322,6 +1424,9 @@ mod tests {
                 cache_read_tokens: 0,
                 cache_creation_tokens: 0,
                 thinking_tokens: 0,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1h_tokens: 0,
+                web_search_requests: 0,
                 cost_usd: Some(0.02),
                 message_id: None,
                 request_id: None,
