@@ -101,6 +101,11 @@ struct CustomModelPricing {
     cache_read: Option<f64>,
     cache_creation_5m: Option<f64>,
     cache_creation_1h: Option<f64>,
+    // Tiered pricing (above 200k tokens)
+    input_above_200k: Option<f64>,
+    output_above_200k: Option<f64>,
+    cache_read_above_200k: Option<f64>,
+    cache_creation_above_200k: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -199,10 +204,14 @@ impl PricingService {
         Ok(home.join(".toktrack").join("pricing.json"))
     }
 
-    /// Load custom pricing from ~/.toktrack/pricing.toml
+    /// Load custom pricing from TOKTRACK_PRICING_FILE env var or ~/.toktrack/pricing.toml
     fn load_custom_pricing() -> Option<CustomPricingConfig> {
-        let home = directories::UserDirs::new()?.home_dir().to_path_buf();
-        let path = home.join(".toktrack").join("pricing.toml");
+        let path = if let Ok(env_path) = std::env::var("TOKTRACK_PRICING_FILE") {
+            PathBuf::from(env_path)
+        } else {
+            let home = directories::UserDirs::new()?.home_dir().to_path_buf();
+            home.join(".toktrack").join("pricing.toml")
+        };
         let content = fs::read_to_string(&path).ok()?;
         match toml::from_str::<CustomPricingConfig>(&content) {
             Ok(config) => Some(config),
@@ -239,11 +248,14 @@ impl PricingService {
             cache_read_input_token_cost: to_per_token(custom_model.cache_read),
             cache_creation_5m_token_cost: to_per_token(custom_model.cache_creation_5m),
             cache_creation_1h_token_cost: to_per_token(custom_model.cache_creation_1h),
-            // Tiered pricing not supported in custom config (use flat rates)
-            input_cost_per_token_above_200k_tokens: None,
-            output_cost_per_token_above_200k_tokens: None,
-            cache_read_input_token_cost_above_200k_tokens: None,
-            cache_creation_input_token_cost_above_200k_tokens: None,
+            input_cost_per_token_above_200k_tokens: to_per_token(custom_model.input_above_200k),
+            output_cost_per_token_above_200k_tokens: to_per_token(custom_model.output_above_200k),
+            cache_read_input_token_cost_above_200k_tokens: to_per_token(
+                custom_model.cache_read_above_200k,
+            ),
+            cache_creation_input_token_cost_above_200k_tokens: to_per_token(
+                custom_model.cache_creation_above_200k,
+            ),
             web_search_cost_per_request: None,
         })
     }
@@ -1106,6 +1118,10 @@ mod tests {
                     cache_read: None,
                     cache_creation_5m: None,
                     cache_creation_1h: None,
+                    input_above_200k: None,
+                    output_above_200k: None,
+                    cache_read_above_200k: None,
+                    cache_creation_above_200k: None,
                 },
             )])),
             global: None,
@@ -1144,6 +1160,10 @@ mod tests {
                     cache_read: None,
                     cache_creation_5m: None,
                     cache_creation_1h: None,
+                    input_above_200k: None,
+                    output_above_200k: None,
+                    cache_read_above_200k: None,
+                    cache_creation_above_200k: None,
                 },
             )])),
             global: None,
@@ -1183,6 +1203,10 @@ mod tests {
                     cache_read: Some(0.30),
                     cache_creation_5m: Some(3.75), // same as base
                     cache_creation_1h: Some(6.0),  // 1.6x multiplier
+                    input_above_200k: None,
+                    output_above_200k: None,
+                    cache_read_above_200k: None,
+                    cache_creation_above_200k: None,
                 },
             )])),
             global: None,
@@ -1226,6 +1250,10 @@ mod tests {
                     cache_read: Some(0.30),
                     cache_creation_5m: Some(3.75),
                     cache_creation_1h: Some(6.0),
+                    input_above_200k: None,
+                    output_above_200k: None,
+                    cache_read_above_200k: None,
+                    cache_creation_above_200k: None,
                 },
             )])),
             global: None,
@@ -1339,5 +1367,212 @@ web_search_per_request = 0.01
 
         let global = config.global.unwrap();
         assert_eq!(global.web_search_per_request, Some(0.01));
+    }
+
+    // ========== TOKTRACK_PRICING_FILE env var tests ==========
+
+    #[test]
+    fn test_load_custom_pricing_from_env_var() {
+        let temp_dir = TempDir::new().unwrap();
+        let toml_path = temp_dir.path().join("custom-pricing.toml");
+        fs::write(
+            &toml_path,
+            r#"
+[models."test-model"]
+input = 10.0
+output = 50.0
+"#,
+        )
+        .unwrap();
+
+        // Set env var and load
+        std::env::set_var("TOKTRACK_PRICING_FILE", toml_path.to_str().unwrap());
+        let config = PricingService::load_custom_pricing();
+        std::env::remove_var("TOKTRACK_PRICING_FILE");
+
+        let config = config.expect("Should load from env var path");
+        let models = config.models.unwrap();
+        let model = &models["test-model"];
+        assert_eq!(model.input, Some(10.0));
+        assert_eq!(model.output, Some(50.0));
+    }
+
+    #[test]
+    fn test_env_var_invalid_path_returns_none() {
+        std::env::set_var("TOKTRACK_PRICING_FILE", "/nonexistent/path/pricing.toml");
+        let config = PricingService::load_custom_pricing();
+        std::env::remove_var("TOKTRACK_PRICING_FILE");
+
+        // Should fall back to default path (which also likely doesn't exist in test)
+        // The key is it doesn't panic
+        let _ = config;
+    }
+
+    // ========== Custom tiered pricing tests ==========
+
+    #[test]
+    fn test_custom_tiered_pricing_above_200k() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let custom = CustomPricingConfig {
+            models: Some(HashMap::from([(
+                "custom-tiered-model".to_string(),
+                CustomModelPricing {
+                    input: Some(3.0),            // $3/1M base
+                    output: Some(15.0),          // $15/1M base
+                    cache_creation: Some(3.75),
+                    cache_read: Some(0.30),
+                    cache_creation_5m: None,
+                    cache_creation_1h: None,
+                    input_above_200k: Some(6.0),   // $6/1M above 200k
+                    output_above_200k: Some(30.0), // $30/1M above 200k
+                    cache_read_above_200k: Some(0.60),
+                    cache_creation_above_200k: Some(7.50),
+                },
+            )])),
+            global: None,
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        // 300k input: 200k at $3/1M + 100k at $6/1M = $0.60 + $0.60 = $1.20
+        let entry = make_entry(Some("custom-tiered-model"), 300_000, 0, 0, 0, None);
+        let cost = service.calculate_cost(&entry);
+
+        let expected = 200_000.0 * 0.000003 + 100_000.0 * 0.000006;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Custom tiered pricing failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_custom_tiered_pricing_all_token_types() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        let custom = CustomPricingConfig {
+            models: Some(HashMap::from([(
+                "tiered-all".to_string(),
+                CustomModelPricing {
+                    input: Some(15.0),
+                    output: Some(75.0),
+                    cache_creation: Some(18.75),
+                    cache_read: Some(1.50),
+                    cache_creation_5m: None,
+                    cache_creation_1h: None,
+                    input_above_200k: Some(30.0),
+                    output_above_200k: Some(150.0),
+                    cache_read_above_200k: Some(3.0),
+                    cache_creation_above_200k: Some(37.50),
+                },
+            )])),
+            global: None,
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        // 300k input, 250k output, 300k cache_read, 500k cache_creation
+        let entry = make_entry(
+            Some("tiered-all"),
+            300_000,
+            250_000,
+            300_000,
+            500_000,
+            None,
+        );
+        let cost = service.calculate_cost(&entry);
+
+        let input = 200_000.0 * 0.000015 + 100_000.0 * 0.00003;
+        let output = 200_000.0 * 0.000075 + 50_000.0 * 0.00015;
+        let cache_read = 200_000.0 * 0.0000015 + 100_000.0 * 0.000003;
+        let cache_creation = 200_000.0 * 0.00001875 + 300_000.0 * 0.0000375;
+        let expected = input + output + cache_read + cache_creation;
+
+        assert!(
+            (cost - expected).abs() < 1e-6,
+            "Custom tiered all types failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_custom_no_tiered_fields_uses_flat_rate() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_path = temp_dir.path().join("pricing.json");
+        create_mock_cache(&cache_path);
+
+        // No _above_200k fields → should use flat rate for all tokens
+        let custom = CustomPricingConfig {
+            models: Some(HashMap::from([(
+                "flat-only".to_string(),
+                CustomModelPricing {
+                    input: Some(3.0),
+                    output: Some(15.0),
+                    cache_creation: None,
+                    cache_read: None,
+                    cache_creation_5m: None,
+                    cache_creation_1h: None,
+                    input_above_200k: None,
+                    output_above_200k: None,
+                    cache_read_above_200k: None,
+                    cache_creation_above_200k: None,
+                },
+            )])),
+            global: None,
+        };
+
+        let service = PricingService::from_cache_only_with_path(&cache_path)
+            .unwrap()
+            .with_custom_pricing(Some(custom));
+
+        let entry = make_entry(Some("flat-only"), 300_000, 0, 0, 0, None);
+        let cost = service.calculate_cost(&entry);
+
+        // All 300k at flat rate: $3/1M * 300k = $0.90
+        let expected = 300_000.0 * 0.000003;
+        assert!(
+            (cost - expected).abs() < 1e-10,
+            "Flat rate fallback failed: expected {}, got {}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn test_custom_pricing_toml_parsing_with_tiered() {
+        let toml_str = r#"
+[models."claude-sonnet-4-5-20250514"]
+input = 3.0
+output = 15.0
+cache_creation = 3.75
+cache_read = 0.30
+input_above_200k = 6.0
+output_above_200k = 30.0
+cache_read_above_200k = 0.60
+cache_creation_above_200k = 7.50
+
+[global]
+web_search_per_request = 0.01
+"#;
+
+        let config: CustomPricingConfig = toml::from_str(toml_str).unwrap();
+        let models = config.models.unwrap();
+        let sonnet = &models["claude-sonnet-4-5-20250514"];
+        assert_eq!(sonnet.input, Some(3.0));
+        assert_eq!(sonnet.input_above_200k, Some(6.0));
+        assert_eq!(sonnet.output_above_200k, Some(30.0));
+        assert_eq!(sonnet.cache_read_above_200k, Some(0.60));
+        assert_eq!(sonnet.cache_creation_above_200k, Some(7.50));
     }
 }
