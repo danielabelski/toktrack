@@ -1420,8 +1420,8 @@ output = 50.0
             models: Some(HashMap::from([(
                 "custom-tiered-model".to_string(),
                 CustomModelPricing {
-                    input: Some(3.0),            // $3/1M base
-                    output: Some(15.0),          // $15/1M base
+                    input: Some(3.0),   // $3/1M base
+                    output: Some(15.0), // $15/1M base
                     cache_creation: Some(3.75),
                     cache_read: Some(0.30),
                     cache_creation_5m: None,
@@ -1482,14 +1482,7 @@ output = 50.0
             .with_custom_pricing(Some(custom));
 
         // 300k input, 250k output, 300k cache_read, 500k cache_creation
-        let entry = make_entry(
-            Some("tiered-all"),
-            300_000,
-            250_000,
-            300_000,
-            500_000,
-            None,
-        );
+        let entry = make_entry(Some("tiered-all"), 300_000, 250_000, 300_000, 500_000, None);
         let cost = service.calculate_cost(&entry);
 
         let input = 200_000.0 * 0.000015 + 100_000.0 * 0.00003;
