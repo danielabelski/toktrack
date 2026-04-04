@@ -213,3 +213,257 @@ impl SourceDetailView<'_> {
         bindings.render(area, buf);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::DailySummary;
+    use chrono::NaiveDate;
+    use std::collections::HashMap;
+
+    fn make_stats_data() -> StatsData {
+        StatsData {
+            total_tokens: 1_500_000,
+            daily_avg_tokens: 500_000,
+            peak_day: Some((NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(), 800_000)),
+            total_cost: 12.50,
+            daily_avg_cost: 4.17,
+            active_days: 3,
+        }
+    }
+
+    fn make_daily_data() -> DailyData {
+        let summaries = vec![DailySummary {
+            date: NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(),
+            total_input_tokens: 500_000,
+            total_output_tokens: 200_000,
+            total_cache_read_tokens: 100_000,
+            total_cache_creation_tokens: 50_000,
+            total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
+            total_cost_usd: 12.50,
+            models: HashMap::new(),
+        }];
+        DailyData::from_daily_summaries(summaries)
+    }
+
+    #[test]
+    fn test_source_detail_renders_without_panic() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "claude-code",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            None,
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+
+        let content = buffer_to_string(&buf);
+        assert!(content.contains("claude-code"));
+    }
+
+    #[test]
+    fn test_source_detail_renders_stats_inline() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "test-source",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            None,
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+
+        let content = buffer_to_string(&buf);
+        assert!(content.contains("Active: 3d"));
+        assert!(content.contains("$12.50"));
+    }
+
+    #[test]
+    fn test_source_detail_mode_indicator_daily() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "src",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            None,
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+
+        let content = buffer_to_string(&buf);
+        assert!(content.contains("d:Daily"));
+        assert!(content.contains("w:Weekly"));
+        assert!(content.contains("m:Monthly"));
+    }
+
+    #[test]
+    fn test_source_detail_keybindings_rendered() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "src",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            None,
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+
+        let content = buffer_to_string(&buf);
+        assert!(content.contains(": Select"));
+        assert!(content.contains("Esc"));
+        assert!(content.contains(": Help"));
+    }
+
+    #[test]
+    fn test_source_detail_narrow_terminal() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "src",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            None,
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 60, 15);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+        // Should not panic even on narrow terminal
+    }
+
+    #[test]
+    fn test_source_detail_with_selection() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "src",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            Some(0),
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+        // Should render with selected row without panic
+    }
+
+    #[test]
+    fn test_source_detail_weekly_mode() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "src",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Weekly,
+            None,
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+
+        let content = buffer_to_string(&buf);
+        assert!(content.contains("w:Weekly"));
+    }
+
+    #[test]
+    fn test_source_detail_empty_data() {
+        let stats = StatsData {
+            total_tokens: 0,
+            daily_avg_tokens: 0,
+            peak_day: None,
+            total_cost: 0.0,
+            daily_avg_cost: 0.0,
+            active_days: 0,
+        };
+        let daily = DailyData::from_daily_summaries(vec![]);
+        let view = SourceDetailView::new(
+            "empty-source",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            None,
+            Theme::Dark,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+
+        let content = buffer_to_string(&buf);
+        assert!(content.contains("empty-source"));
+        assert!(content.contains("$0.00"));
+    }
+
+    #[test]
+    fn test_source_detail_light_theme() {
+        let stats = make_stats_data();
+        let daily = make_daily_data();
+        let view = SourceDetailView::new(
+            "src",
+            &daily,
+            &stats,
+            0,
+            DailyViewMode::Daily,
+            None,
+            Theme::Light,
+        );
+        let area = Rect::new(0, 0, 120, 20);
+        let mut buf = Buffer::empty(area);
+        view.render(area, &mut buf);
+        // Should render with light theme without panic
+    }
+
+    #[test]
+    fn test_daily_view_visible_columns_delegates() {
+        let cols = daily_view_visible_columns(200);
+        assert!(!cols.is_empty());
+
+        let narrow_cols = daily_view_visible_columns(40);
+        assert!(narrow_cols.len() <= cols.len());
+    }
+
+    fn buffer_to_string(buf: &Buffer) -> String {
+        let area = buf.area;
+        let mut result = String::new();
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                let cell = &buf[(x, y)];
+                result.push_str(cell.symbol());
+            }
+            result.push('\n');
+        }
+        result
+    }
+}

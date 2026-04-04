@@ -76,13 +76,14 @@ const TIERED_THRESHOLD: u64 = 200_000;
 
 /// Calculate cost with tiered pricing: base rate up to threshold, tiered rate above.
 fn tiered_cost(tokens: u64, base_price: f64, tiered_price: Option<f64>) -> f64 {
-    if tokens <= TIERED_THRESHOLD || tiered_price.is_none() {
-        return tokens as f64 * base_price;
+    match tiered_price {
+        Some(tiered) if tokens > TIERED_THRESHOLD => {
+            let below = TIERED_THRESHOLD as f64 * base_price;
+            let above = (tokens - TIERED_THRESHOLD) as f64 * tiered;
+            below + above
+        }
+        _ => tokens as f64 * base_price,
     }
-    let tiered = tiered_price.unwrap();
-    let below = TIERED_THRESHOLD as f64 * base_price;
-    let above = (tokens - TIERED_THRESHOLD) as f64 * tiered;
-    below + above
 }
 
 /// Custom pricing configuration from ~/.toktrack/pricing.toml
