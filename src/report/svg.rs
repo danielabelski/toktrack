@@ -94,7 +94,7 @@ pub fn render(data: &ReportData) -> String {
         w2 = WIDTH - 2,
         h2 = height - 2,
     )
-    .unwrap();
+    .expect("writing to String is infallible");
 
     let mut y = PADDING;
     let x = PADDING;
@@ -107,7 +107,7 @@ pub fn render(data: &ReportData) -> String {
         svg,
         r#"<text x="{cx}" y="{y}" class="title" text-anchor="middle">AI CODING RECEIPT</text>"#,
     )
-    .unwrap();
+    .expect("writing to String is infallible");
 
     // Period
     y += LINE_HEIGHT;
@@ -116,7 +116,7 @@ pub fn render(data: &ReportData) -> String {
         r#"<text x="{cx}" y="{y}" class="subtitle" text-anchor="middle">{}</text>"#,
         escape_xml(&data.period_label),
     )
-    .unwrap();
+    .expect("writing to String is infallible");
 
     // Separator
     y += SECTION_GAP;
@@ -169,7 +169,7 @@ pub fn render(data: &ReportData) -> String {
             svg,
             r#"<text x="{x}" y="{y}" class="section">BY MODEL</text>"#
         )
-        .unwrap();
+        .expect("writing to String is infallible");
 
         let max_cost = data
             .by_model
@@ -183,19 +183,20 @@ pub fn render(data: &ReportData) -> String {
             let cost = format_cost(model.cost_usd);
             let tokens = format_tokens(model.input_tokens.saturating_add(model.output_tokens));
 
-            write!(svg, r#"<text x="{x}" y="{y}" class="label">{name}</text>"#).unwrap();
+            write!(svg, r#"<text x="{x}" y="{y}" class="label">{name}</text>"#)
+                .expect("writing to String is infallible");
             write!(
                 svg,
                 r#"<text x="{mx}" y="{y}" class="value" text-anchor="end">{cost}</text>"#,
                 mx = x + 220,
             )
-            .unwrap();
+            .expect("writing to String is infallible");
             write!(
                 svg,
                 r#"<text x="{tx}" y="{y}" class="label" text-anchor="end">{tokens}</text>"#,
                 tx = x + 290,
             )
-            .unwrap();
+            .expect("writing to String is infallible");
 
             let ratio = if max_cost > 0.0 {
                 model.cost_usd / max_cost
@@ -211,7 +212,7 @@ pub fn render(data: &ReportData) -> String {
                     svg,
                     r#"<rect x="{bar_x}" y="{bar_y}" width="{bar_w}" height="{BAR_HEIGHT}" class="bar" fill="{color}" opacity="0.8"/>"#,
                 )
-                .unwrap();
+                .expect("writing to String is infallible");
             }
         }
     }
@@ -225,7 +226,7 @@ pub fn render(data: &ReportData) -> String {
             svg,
             r#"<text x="{x}" y="{y}" class="section">BY SOURCE</text>"#
         )
-        .unwrap();
+        .expect("writing to String is infallible");
 
         for source in &data.by_source {
             y += LINE_HEIGHT;
@@ -233,19 +234,20 @@ pub fn render(data: &ReportData) -> String {
             let cost = format_cost(source.cost_usd);
             let tokens = format_tokens(source.total_tokens);
 
-            write!(svg, r#"<text x="{x}" y="{y}" class="label">{name}</text>"#).unwrap();
+            write!(svg, r#"<text x="{x}" y="{y}" class="label">{name}</text>"#)
+                .expect("writing to String is infallible");
             write!(
                 svg,
                 r#"<text x="{mx}" y="{y}" class="value" text-anchor="end">{cost}</text>"#,
                 mx = x + 220,
             )
-            .unwrap();
+            .expect("writing to String is infallible");
             write!(
                 svg,
                 r#"<text x="{tx}" y="{y}" class="label" text-anchor="end">{tokens}</text>"#,
                 tx = x + 290,
             )
-            .unwrap();
+            .expect("writing to String is infallible");
         }
     }
 
@@ -258,7 +260,7 @@ pub fn render(data: &ReportData) -> String {
             svg,
             r#"<text x="{x}" y="{y}" class="section">DAILY BREAKDOWN</text>"#
         )
-        .unwrap();
+        .expect("writing to String is infallible");
 
         let max_cost = data
             .daily
@@ -275,13 +277,13 @@ pub fn render(data: &ReportData) -> String {
                 svg,
                 r#"<text x="{x}" y="{y}" class="label">{date_str}</text>"#
             )
-            .unwrap();
+            .expect("writing to String is infallible");
             write!(
                 svg,
                 r#"<text x="{mx}" y="{y}" class="value" text-anchor="end">{cost}</text>"#,
                 mx = x + 140,
             )
-            .unwrap();
+            .expect("writing to String is infallible");
 
             let ratio = if max_cost > 0.0 {
                 day.cost_usd / max_cost
@@ -297,7 +299,7 @@ pub fn render(data: &ReportData) -> String {
                     svg,
                     r#"<rect x="{bar_x}" y="{bar_y}" width="{bar_w}" height="{BAR_HEIGHT}" class="bar" fill="{color}" opacity="0.7"/>"#,
                 )
-                .unwrap();
+                .expect("writing to String is infallible");
             }
         }
     }
@@ -317,7 +319,7 @@ pub fn render(data: &ReportData) -> String {
             r#"<text x="{cx}" y="{y}" class="label" text-anchor="middle">{}</text>"#,
             escape_xml(&highlight),
         )
-        .unwrap();
+        .expect("writing to String is infallible");
     }
 
     // Footer
@@ -328,7 +330,7 @@ pub fn render(data: &ReportData) -> String {
         svg,
         r#"<text x="{cx}" y="{y}" class="footer" text-anchor="middle">Generated by toktrack · github.com/mag123c/toktrack</text>"#,
     )
-    .unwrap();
+    .expect("writing to String is infallible");
 
     svg.push_str("\n</svg>");
     svg
@@ -339,7 +341,7 @@ fn svg_separator(svg: &mut String, x: u32, right: u32, y: u32) {
         svg,
         r#"<line x1="{x}" y1="{y}" x2="{right}" y2="{y}" class="separator"/>"#,
     )
-    .unwrap();
+    .expect("writing to String is infallible");
 }
 
 fn svg_label_value(svg: &mut String, x: u32, right: u32, y: u32, label: &str, value: &str) {
@@ -347,7 +349,7 @@ fn svg_label_value(svg: &mut String, x: u32, right: u32, y: u32, label: &str, va
         svg,
         r#"<text x="{x}" y="{y}" class="label">{label}</text><text x="{right}" y="{y}" class="value" text-anchor="end">{value}</text>"#,
     )
-    .unwrap();
+    .expect("writing to String is infallible");
 }
 
 #[cfg(test)]
