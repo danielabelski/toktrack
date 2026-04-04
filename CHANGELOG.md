@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.2](https://github.com/mag123c/toktrack/compare/v2.3.1...v2.3.2) (2026-04-04)
+
+
+### Refactoring
+
+* replace production unwrap with expect + add source_detail tests ([3deec5f](https://github.com/mag123c/toktrack/commit/3deec5f90226125d2df92874af5ab3c4c9a0c120))
+* **report,services:** replace unwrap with expect and idiomatic match ([fee9bd3](https://github.com/mag123c/toktrack/commit/fee9bd31aaa8d63ed8ea9af6a3663e2214954216))
+
 ## [2.3.1](https://github.com/mag123c/toktrack/compare/v2.3.0...v2.3.1) (2026-04-04)
 
 
