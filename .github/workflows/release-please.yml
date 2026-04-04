@@ -25,25 +25,28 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Auto-merge release PR and wait for completion
-      # GITHUB_TOKEN merges don't trigger new push events, so we handle
-      # the post-merge release creation within this same workflow run.
+      # Auto-merge release PR: wait for CI checks, then merge directly.
+      # --auto requires branch protection rules; this repo has none,
+      # so we poll for check completion and merge explicitly.
       - name: Auto-merge Release PR
         id: merge
         if: steps.release.outputs.pr
         run: |
           PR_NUMBER=$(echo '${{ steps.release.outputs.pr }}' | jq -r '.number')
-          gh pr merge "$PR_NUMBER" --auto --squash
 
-          for i in $(seq 1 120); do
-            STATE=$(gh pr view "$PR_NUMBER" --json state -q '.state')
-            if [ "$STATE" = "MERGED" ]; then
-              echo "merged=true" >> "$GITHUB_OUTPUT"
-              exit 0
+          # Wait for CI checks to complete (up to 10 minutes)
+          for i in $(seq 1 60); do
+            PENDING=$(gh pr checks "$PR_NUMBER" --json state --jq '[.[] | select(.state != "SUCCESS" and .state != "SKIPPED")] | length' 2>/dev/null || echo "waiting")
+            if [ "$PENDING" = "0" ]; then
+              break
             fi
-            sleep 5
+            sleep 10
           done
-          echo "merged=false" >> "$GITHUB_OUTPUT"
+
+          # Merge directly
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
+
+          echo "merged=true" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
