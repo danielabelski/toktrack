@@ -1,0 +1,358 @@
+//! PI Agent JSONL parser
+
+use crate::types::{Result, ToktrackError, UsageEntry};
+use chrono::{DateTime, TimeZone, Utc};
+use serde::Deserialize;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+
+use super::CLIParser;
+
+/// Event line in PI Agent JSONL sessions
+#[derive(Deserialize)]
+struct PiAgentLine<'a> {
+    #[serde(rename = "type")]
+    line_type: &'a str,
+    id: Option<&'a str>,
+    #[serde(rename = "modelId")]
+    model_id: Option<&'a str>,
+    timestamp: Option<&'a str>,
+    provider: Option<&'a str>,
+    message: Option<PiAgentMessage<'a>>,
+}
+
+#[derive(Deserialize)]
+struct PiAgentMessage<'a> {
+    role: Option<&'a str>,
+    model: Option<&'a str>,
+    provider: Option<&'a str>,
+    usage: Option<PiAgentUsage>,
+}
+
+#[derive(Deserialize)]
+struct PiAgentUsage {
+    #[serde(default)]
+    input: u64,
+    #[serde(default)]
+    output: u64,
+    #[serde(rename = "cacheRead", default)]
+    cache_read: u64,
+    #[serde(rename = "cacheWrite", default)]
+    cache_write: u64,
+    cost: Option<PiAgentCost>,
+}
+
+#[derive(Deserialize)]
+struct PiAgentCost {
+    total: Option<f64>,
+}
+
+/// Parsed parser state for one line
+struct PiAgentEvent {
+    timestamp: DateTime<Utc>,
+    message_id: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+    usage: PiAgentUsage,
+}
+
+enum ParseResult {
+    Skip,
+    Session(String),
+    MessageConfig {
+        model: Option<String>,
+        provider: Option<String>,
+    },
+    Usage(PiAgentEvent),
+}
+
+/// Parser for PI Agent usage data
+pub struct PiAgentParser {
+    data_dir: PathBuf,
+}
+
+impl PiAgentParser {
+    /// Create a new parser with default data directory (~/.pi/agent/sessions/)
+    /// or PI_AGENT_DIR if set.
+    pub fn new() -> Self {
+        let data_dir = std::env::var("PI_AGENT_DIR")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .map(PathBuf::from)
+            .or_else(|| {
+                directories::BaseDirs::new()
+                    .map(|d| d.home_dir().join(".pi").join("agent").join("sessions"))
+            })
+            .unwrap_or_else(|| {
+                eprintln!("[toktrack] Warning: Could not determine home directory");
+                PathBuf::from(".")
+            });
+
+        Self { data_dir }
+    }
+
+    /// Create a parser with a custom data directory (for testing)
+    #[allow(dead_code)]
+    pub fn with_data_dir(data_dir: PathBuf) -> Self {
+        Self { data_dir }
+    }
+
+    /// Parse a single JSONL line
+    fn parse_line(&self, line: &mut [u8]) -> ParseResult {
+        if line.is_empty() {
+            return ParseResult::Skip;
+        }
+
+        let line_data: PiAgentLine = match simd_json::from_slice(line) {
+            Ok(data) => data,
+            Err(_) => return ParseResult::Skip,
+        };
+
+        match line_data.line_type {
+            "session" => {
+                if let Some(id) = line_data.id {
+                    return ParseResult::Session(id.to_string());
+                }
+                ParseResult::Skip
+            }
+            "model_change" => {
+                let model = line_data.model_id.map(String::from);
+                let provider = line_data.provider.map(String::from);
+
+                if model.is_some() || provider.is_some() {
+                    ParseResult::MessageConfig { model, provider }
+                } else {
+                    ParseResult::Skip
+                }
+            }
+            "message" => {
+                let message = match line_data.message {
+                    Some(message) => message,
+                    None => return ParseResult::Skip,
+                };
+
+                let usage = match message.usage {
+                    Some(usage) => usage,
+                    None => return ParseResult::Skip,
+                };
+
+                if message.role != Some("assistant") {
+                    return ParseResult::Skip;
+                }
+
+                let timestamp = match line_data.timestamp.and_then(parse_timestamp) {
+                    Some(ts) => ts,
+                    None => return ParseResult::Skip,
+                };
+
+                ParseResult::Usage(PiAgentEvent {
+                    timestamp,
+                    message_id: line_data.id.map(String::from),
+                    model: message.model.map(String::from),
+                    provider: message.provider.or(line_data.provider).map(String::from),
+                    usage,
+                })
+            }
+            _ => ParseResult::Skip,
+        }
+    }
+}
+
+fn parse_timestamp(value: &str) -> Option<DateTime<Utc>> {
+    if let Ok(ts) = DateTime::parse_from_rfc3339(value) {
+        return Some(ts.with_timezone(&Utc));
+    }
+
+    value
+        .parse::<i64>()
+        .ok()
+        .and_then(|ms| Utc.timestamp_millis_opt(ms).single())
+}
+
+impl Default for PiAgentParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CLIParser for PiAgentParser {
+    fn name(&self) -> &str {
+        "pi-agent"
+    }
+
+    fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
+    fn file_pattern(&self) -> &str {
+        "**/*.jsonl"
+    }
+
+    fn parse_file(&self, path: &Path) -> Result<Vec<UsageEntry>> {
+        let file = File::open(path).map_err(ToktrackError::Io)?;
+        let reader = BufReader::new(file);
+        let mut entries = Vec::new();
+        let mut current_model: Option<String> = None;
+        let mut current_provider: Option<String> = None;
+        let mut current_session: Option<String> = None;
+
+        for line_result in reader.lines() {
+            let line = match line_result {
+                Ok(l) => l,
+                Err(_) => continue,
+            };
+
+            let mut line_bytes = line.into_bytes();
+            match self.parse_line(&mut line_bytes) {
+                ParseResult::Skip => {}
+                ParseResult::Session(session_id) => {
+                    current_session = Some(session_id);
+                }
+                ParseResult::MessageConfig { model, provider } => {
+                    if model.is_some() {
+                        current_model = model;
+                    }
+                    if provider.is_some() {
+                        current_provider = provider;
+                    }
+                }
+                ParseResult::Usage(mut event) => {
+                    if event.model.is_none() {
+                        event.model = current_model.clone();
+                    }
+                    if event.provider.is_none() {
+                        event.provider = current_provider.clone();
+                    }
+
+                    entries.push(UsageEntry {
+                        timestamp: event.timestamp,
+                        model: event.model,
+                        input_tokens: event.usage.input,
+                        output_tokens: event.usage.output,
+                        cache_read_tokens: event.usage.cache_read,
+                        cache_creation_tokens: event.usage.cache_write,
+                        thinking_tokens: 0,
+                        cache_creation_5m_tokens: 0,
+                        cache_creation_1h_tokens: 0,
+                        web_search_requests: 0,
+                        cost_usd: event.usage.cost.and_then(|c| c.total),
+                        message_id: event.message_id,
+                        request_id: current_session.clone(),
+                        source: Some("pi-agent".into()),
+                        provider: event.provider,
+                    });
+                }
+            }
+        }
+
+        Ok(entries)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("pi_agent")
+            .join(name)
+    }
+
+    #[test]
+    fn test_parse_pi_agent_jsonl() {
+        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("sample-session.jsonl"))
+            .unwrap();
+
+        // Three assistant usage events in fixture
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_pi_agent_model_from_model_change() {
+        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("sample-session.jsonl"))
+            .unwrap();
+
+        // First entry has no model field; should inherit from model_change
+        assert_eq!(entries[0].model, Some("gpt-5.3-test".to_string()));
+    }
+
+    #[test]
+    fn test_parse_pi_agent_explicit_model_and_provider() {
+        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("sample-session.jsonl"))
+            .unwrap();
+
+        assert_eq!(entries[1].model, Some("gpt-4x".to_string()));
+        assert_eq!(entries[1].provider, Some("custom-provider".to_string()));
+    }
+
+    #[test]
+    fn test_parse_pi_agent_provider_inheritance() {
+        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("sample-session.jsonl"))
+            .unwrap();
+
+        // Last entry inherits model + provider from the latest model_change
+        assert_eq!(entries[2].model, Some("gpt-4-pro".to_string()));
+        assert_eq!(entries[2].provider, Some("anthropic".to_string()));
+        assert_eq!(entries[2].request_id, Some("sess-001".to_string()));
+    }
+
+    #[test]
+    fn test_parse_pi_agent_skip_invalid_lines() {
+        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("sample-session.jsonl"))
+            .unwrap();
+
+        // Total lines: 8, but only 3 contain valid assistant usage
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_parser_name() {
+        let parser = PiAgentParser::new();
+        assert_eq!(parser.name(), "pi-agent");
+    }
+
+    #[test]
+    fn test_parser_file_pattern() {
+        let parser = PiAgentParser::new();
+        assert_eq!(parser.file_pattern(), "**/*.jsonl");
+    }
+
+    #[test]
+    fn test_parse_nonexistent_file() {
+        let parser = PiAgentParser::new();
+        let result = parser.parse_file(Path::new("/nonexistent/file.jsonl"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_line_missing_cost_kept_as_none() {
+        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("sample-session.jsonl"))
+            .unwrap();
+
+        assert!(entries[2].cost_usd.is_none());
+    }
+
+    #[test]
+    fn test_parse_timestamp_from_ms_or_rfc3339() {
+        assert!(parse_timestamp("2026-02-20T10:00:00Z").is_some());
+        assert!(parse_timestamp("1708425600000").is_some());
+        assert!(parse_timestamp("invalid").is_none());
+    }
+}
