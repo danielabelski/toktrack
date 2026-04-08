@@ -1,4 +1,16 @@
 //! PI Agent JSONL parser
+//!
+//! # Branch counting policy
+//!
+//! PI Agent v2/v3 sessions form a parent/child tree via `parentId`. The
+//! `/tree` command lets multiple assistant messages share the same parent
+//! within a single file (divergent branches). Each such message represents
+//! a real, billed API call, so we count **all** assistant messages found
+//! in a file — including those on abandoned branches.
+//!
+//! The `/fork` command produces a new session file that copies its parent's
+//! history; the duplicated entries share their original `message_id`s and
+//! are deduplicated by `ParserRegistry::parse_and_dedup` (see `mod.rs`).
 
 use crate::types::{Result, ToktrackError, UsageEntry};
 use chrono::{DateTime, TimeZone, Utc};
