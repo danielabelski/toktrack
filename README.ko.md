@@ -134,6 +134,15 @@ toktrack report --svg        # 텍스트 + SVG 파일
 | Codex CLI | ✅ | `~/.codex/sessions/` |
 | Gemini CLI | ✅ | `~/.gemini/tmp/*/chats/` |
 | OpenCode | ✅ | `~/.local/share/opencode/storage/message/` |
+| PI Agent | ✅ | `~/.pi/agent/sessions/` |
+
+### 환경 변수
+
+- `PI_AGENT_DIR`: PI Agent 세션 루트를 기본값(`~/.pi/agent/sessions/`) 대신 지정할 때 사용
+
+```bash
+export PI_AGENT_DIR="/path/to/.pi/agent/sessions"
+```
 
 ## 성능
 
@@ -169,7 +178,8 @@ toktrack report --svg        # 텍스트 + SVG 파일
 │   ├── claude-code_daily.json   # 일별 비용 요약
 │   ├── codex_daily.json
 │   ├── gemini_daily.json
-│   └── opencode_daily.json
+│   ├── opencode_daily.json
+│   └── pi-agent_daily.json
 └── pricing.json                 # LiteLLM 가격 정보 (1시간 TTL)
 ```
 

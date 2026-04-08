@@ -4,11 +4,13 @@ mod claude;
 mod codex;
 mod gemini;
 mod opencode;
+mod pi_agent;
 
 pub use claude::ClaudeCodeParser;
 pub use codex::CodexParser;
 pub use gemini::GeminiParser;
 pub use opencode::OpenCodeParser;
+pub use pi_agent::PiAgentParser;
 
 use crate::types::{Result, UsageEntry};
 use rayon::prelude::*;
@@ -108,6 +110,7 @@ impl ParserRegistry {
                 Box::new(CodexParser::new()),
                 Box::new(GeminiParser::new()),
                 Box::new(OpenCodeParser::new()),
+                Box::new(PiAgentParser::new()),
             ],
         }
     }
@@ -140,11 +143,12 @@ mod tests {
     #[test]
     fn test_registry_default_parsers() {
         let registry = ParserRegistry::new();
-        assert_eq!(registry.parsers().len(), 4);
+        assert_eq!(registry.parsers().len(), 5);
         assert!(registry.get("claude-code").is_some());
         assert!(registry.get("codex").is_some());
         assert!(registry.get("gemini").is_some());
         assert!(registry.get("opencode").is_some());
+        assert!(registry.get("pi-agent").is_some());
     }
 
     #[test]
@@ -218,7 +222,7 @@ mod tests {
     fn test_collect_files() {
         let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let files = parser.collect_files();
-        // claude-sample.jsonl, empty.jsonl, multi/file1.jsonl, multi/file2.jsonl, codex/sample-session.jsonl, codex/multi-turn-session.jsonl
-        assert_eq!(files.len(), 6);
+        // claude-sample.jsonl, empty.jsonl, multi/file1.jsonl, multi/file2.jsonl, codex/sample-session.jsonl, codex/multi-turn-session.jsonl, pi_agent/sample-session.jsonl
+        assert_eq!(files.len(), 7);
     }
 }
