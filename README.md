@@ -138,6 +138,16 @@ toktrack report --svg        # Text + SVG file
 | Codex CLI | ✅ | `~/.codex/sessions/` |
 | Gemini CLI | ✅ | `~/.gemini/tmp/*/chats/` |
 | OpenCode | ✅ | `~/.local/share/opencode/storage/message/` |
+| PI Agent | ✅ | `~/.pi/agent/sessions/` |
+
+### Environment Variables
+
+- `PI_AGENT_DIR`: Override PI Agent session root directory (default: `~/.pi/agent/sessions/`).
+
+```bash
+export PI_AGENT_DIR="/path/to/.pi/agent/sessions"
+```
+
 
 ## Performance
 
@@ -173,7 +183,8 @@ toktrack report --svg        # Text + SVG file
 │   ├── claude-code_daily.json   # Daily cost summaries
 │   ├── codex_daily.json
 │   ├── gemini_daily.json
-│   └── opencode_daily.json
+│   ├── opencode_daily.json
+│   └── pi-agent_daily.json
 └── pricing.json                 # LiteLLM pricing (1h TTL)
 ```
 

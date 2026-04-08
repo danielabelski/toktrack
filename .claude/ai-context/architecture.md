@@ -51,6 +51,7 @@ trait CLIParser: Send + Sync {
 | CodexParser | JSONL | ~/.codex/sessions/ | ✅ |
 | GeminiParser | JSON | ~/.gemini/tmp/*/chats/ | ✅ |
 | OpenCodeParser | JSON | ~/.local/share/opencode/storage/message/ | ✅ |
+| PiAgentParser | JSONL | ~/.pi/agent/sessions/ | ✅ |
 
 ## Data Flow
 ```
