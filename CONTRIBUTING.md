@@ -53,7 +53,7 @@ Examples:
 src/
 ├── main.rs            # Entry point
 ├── cli/               # CLI argument parsing
-├── parser/            # JSONL parsers (claude, codex, gemini, opencode)
+├── parser/            # JSONL parsers (claude, codex, gemini, opencode, pi-agent)
 ├── services/          # Aggregation, caching, pricing
 └── tui/               # Terminal UI (ratatui)
 ```
