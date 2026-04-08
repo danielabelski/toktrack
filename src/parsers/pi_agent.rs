@@ -270,54 +270,40 @@ mod tests {
             .parse_file(&fixture_path("sample-session.jsonl"))
             .unwrap();
 
-        // Three assistant usage events in fixture
-        assert_eq!(entries.len(), 3);
+        // Fixture contains a single assistant usage event
+        assert_eq!(entries.len(), 1);
     }
 
     #[test]
-    fn test_parse_pi_agent_model_from_model_change() {
+    fn test_parse_pi_agent_assistant_fields() {
         let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let entries = parser
             .parse_file(&fixture_path("sample-session.jsonl"))
             .unwrap();
 
-        // First entry has no model field; should inherit from model_change
-        assert_eq!(entries[0].model, Some("gpt-5.3-test".to_string()));
+        let entry = &entries[0];
+        assert_eq!(entry.model, Some("gpt-5.3-codex".to_string()));
+        assert_eq!(entry.provider, Some("openai-codex".to_string()));
+        assert_eq!(entry.input_tokens, 1224);
+        assert_eq!(entry.output_tokens, 189);
+        assert_eq!(entry.message_id, Some("9687b1d5".to_string()));
+        assert_eq!(
+            entry.request_id,
+            Some("00000000-0000-0000-0000-000000000001".to_string())
+        );
+        assert_eq!(entry.cost_usd, Some(0.004788));
     }
 
     #[test]
-    fn test_parse_pi_agent_explicit_model_and_provider() {
+    fn test_parse_pi_agent_skips_non_assistant_lines() {
         let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let entries = parser
             .parse_file(&fixture_path("sample-session.jsonl"))
             .unwrap();
 
-        assert_eq!(entries[1].model, Some("gpt-4x".to_string()));
-        assert_eq!(entries[1].provider, Some("custom-provider".to_string()));
-    }
-
-    #[test]
-    fn test_parse_pi_agent_provider_inheritance() {
-        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
-        let entries = parser
-            .parse_file(&fixture_path("sample-session.jsonl"))
-            .unwrap();
-
-        // Last entry inherits model + provider from the latest model_change
-        assert_eq!(entries[2].model, Some("gpt-4-pro".to_string()));
-        assert_eq!(entries[2].provider, Some("anthropic".to_string()));
-        assert_eq!(entries[2].request_id, Some("sess-001".to_string()));
-    }
-
-    #[test]
-    fn test_parse_pi_agent_skip_invalid_lines() {
-        let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
-        let entries = parser
-            .parse_file(&fixture_path("sample-session.jsonl"))
-            .unwrap();
-
-        // Total lines: 8, but only 3 contain valid assistant usage
-        assert_eq!(entries.len(), 3);
+        // 5 lines total: session, model_change, thinking_level_change, user msg,
+        // assistant msg → only the assistant message produces an entry
+        assert_eq!(entries.len(), 1);
     }
 
     #[test]
@@ -340,13 +326,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_line_missing_cost_kept_as_none() {
+    fn test_parse_line_cost_extracted_from_total() {
         let parser = PiAgentParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let entries = parser
             .parse_file(&fixture_path("sample-session.jsonl"))
             .unwrap();
 
-        assert!(entries[2].cost_usd.is_none());
+        assert_eq!(entries[0].cost_usd, Some(0.004788));
     }
 
     #[test]

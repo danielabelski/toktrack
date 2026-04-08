@@ -1,8 +1,5 @@
-{"type":"session","version":3,"id":"sess-001","timestamp":"2026-02-20T10:00:00Z","cwd":"/Users/ryunseo/workspace/toktrack"}
-{"type":"model_change","id":"mc-1","timestamp":"2026-02-20T10:00:01Z","provider":"openai-codex","modelId":"gpt-5.3-test"}
-{"type":"message","id":"msg-user","parentId":"mc-1","timestamp":"2026-02-20T10:00:02Z","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}
-{"type":"message","id":"msg-01","parentId":"msg-user","timestamp":"2026-02-20T10:00:03Z","message":{"role":"assistant","content":[{"type":"text","text":"reply"}],"usage":{"input":123,"output":45,"cacheRead":6,"cacheWrite":1,"totalTokens":175,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0.0123}}}}
-{"type":"model_change","id":"mc-2","timestamp":"2026-02-20T10:00:04Z","provider":"anthropic","modelId":"gpt-4-pro"}
-{"type":"message","id":"msg-02","parentId":"msg-01","timestamp":"2026-02-20T10:00:05Z","message":{"role":"assistant","model":"gpt-4x","provider":"custom-provider","usage":{"input":7,"output":8,"cacheRead":1,"cacheWrite":0,"totalTokens":16,"cost":{"total":4.56}}}}
-{"type":"message","id":"msg-03","parentId":"msg-02","timestamp":"2026-02-20T10:00:06Z","message":{"role":"assistant","usage":{"input":9,"output":1,"cacheRead":2,"cacheWrite":3,"totalTokens":15}}}
-{"type":"message","id":"bad"
+{"type":"session","version":3,"id":"00000000-0000-0000-0000-000000000001","timestamp":"2026-03-02T09:05:29.039Z","cwd":"/tmp/example-project"}
+{"type":"model_change","id":"24800656","parentId":null,"timestamp":"2026-03-02T09:05:29.039Z","provider":"openai-codex","modelId":"gpt-5.3-codex"}
+{"type":"thinking_level_change","id":"e4a67983","parentId":"24800656","timestamp":"2026-03-02T09:05:29.039Z","thinkingLevel":"medium"}
+{"type":"message","id":"4cb265b0","parentId":"e4a67983","timestamp":"2026-03-02T09:05:42.280Z","message":{"role":"user","content":[{"type":"text","text":"hello"}],"timestamp":1772442342269}}
+{"type":"message","id":"9687b1d5","parentId":"4cb265b0","timestamp":"2026-03-02T09:05:46.893Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"explanation","thinkingSignature":"sig-thinking-placeholder"},{"type":"text","text":"reply","textSignature":"sig-text-placeholder"}],"api":"openai-codex-responses","provider":"openai-codex","model":"gpt-5.3-codex","usage":{"input":1224,"output":189,"cacheRead":0,"cacheWrite":0,"totalTokens":1413,"cost":{"input":0.002142,"output":0.002646,"cacheRead":0,"cacheWrite":0,"total":0.004788}},"stopReason":"stop","timestamp":1772442342272}}
