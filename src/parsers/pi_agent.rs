@@ -15,10 +15,7 @@ struct PiAgentLine<'a> {
     #[serde(rename = "type")]
     line_type: &'a str,
     id: Option<&'a str>,
-    #[serde(rename = "modelId")]
-    model_id: Option<&'a str>,
     timestamp: Option<&'a str>,
-    provider: Option<&'a str>,
     message: Option<PiAgentMessage<'a>>,
 }
 
@@ -60,10 +57,6 @@ struct PiAgentEvent {
 enum ParseResult {
     Skip,
     Session(String),
-    MessageConfig {
-        model: Option<String>,
-        provider: Option<String>,
-    },
     Usage(PiAgentEvent),
 }
 
@@ -116,16 +109,6 @@ impl PiAgentParser {
                 }
                 ParseResult::Skip
             }
-            "model_change" => {
-                let model = line_data.model_id.map(String::from);
-                let provider = line_data.provider.map(String::from);
-
-                if model.is_some() || provider.is_some() {
-                    ParseResult::MessageConfig { model, provider }
-                } else {
-                    ParseResult::Skip
-                }
-            }
             "message" => {
                 let message = match line_data.message {
                     Some(message) => message,
@@ -150,7 +133,7 @@ impl PiAgentParser {
                     timestamp,
                     message_id: line_data.id.map(String::from),
                     model: message.model.map(String::from),
-                    provider: message.provider.or(line_data.provider).map(String::from),
+                    provider: message.provider.map(String::from),
                     usage,
                 })
             }
@@ -193,8 +176,6 @@ impl CLIParser for PiAgentParser {
         let file = File::open(path).map_err(ToktrackError::Io)?;
         let reader = BufReader::new(file);
         let mut entries = Vec::new();
-        let mut current_model: Option<String> = None;
-        let mut current_provider: Option<String> = None;
         let mut current_session: Option<String> = None;
 
         for line_result in reader.lines() {
@@ -209,22 +190,7 @@ impl CLIParser for PiAgentParser {
                 ParseResult::Session(session_id) => {
                     current_session = Some(session_id);
                 }
-                ParseResult::MessageConfig { model, provider } => {
-                    if model.is_some() {
-                        current_model = model;
-                    }
-                    if provider.is_some() {
-                        current_provider = provider;
-                    }
-                }
-                ParseResult::Usage(mut event) => {
-                    if event.model.is_none() {
-                        event.model = current_model.clone();
-                    }
-                    if event.provider.is_none() {
-                        event.provider = current_provider.clone();
-                    }
-
+                ParseResult::Usage(event) => {
                     entries.push(UsageEntry {
                         timestamp: event.timestamp,
                         model: event.model,
