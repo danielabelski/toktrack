@@ -13,6 +13,7 @@
 > **⚠️ Did you know?** Claude Code **deletes your session data after 30 days** by default. Once deleted, your token usage and cost history are gone forever — unless you preserve them.
 
 Track token usage and costs across **all your AI coding CLIs** — Claude Code, Codex CLI, Gemini CLI, and OpenCode — in one dashboard.
+- provided also PI Agent since April 2026
 
 Built with Rust for ultra-fast performance (simd-json + rayon parallel processing).
 
