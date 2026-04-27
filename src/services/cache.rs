@@ -14,11 +14,22 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 
+/// Normalize a composite "model::provider" key by normalizing only the model
+/// portion. Plain (non-composite) keys are normalized as before.
+/// (Issue #134: provider strings must not be subject to model-name normalization)
+fn normalize_composite_key(key: &str) -> String {
+    if let Some((model, provider)) = key.split_once("::") {
+        format!("{}::{}", normalize_model_name(model), provider)
+    } else {
+        normalize_model_name(key)
+    }
+}
+
 /// Normalize model name keys in a HashMap, merging duplicates.
 fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, ModelUsage> {
     let mut normalized: HashMap<String, ModelUsage> = HashMap::new();
     for (name, usage) in models {
-        let key = normalize_model_name(&name);
+        let key = normalize_composite_key(&name);
         normalized
             .entry(key)
             .and_modify(|existing| {
@@ -52,7 +63,7 @@ fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, 
 
 /// Bump when aggregation logic changes (e.g., timezone fix).
 /// Mismatched version → full cache invalidation.
-const CACHE_VERSION: u32 = 11;
+const CACHE_VERSION: u32 = 12;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DailySummaryCache {
@@ -976,5 +987,154 @@ mod tests {
         fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
 
         assert_eq!(service.latest_cached_date("claude-code"), None);
+    }
+
+    // ========== Issue #134: composite key normalization ==========
+
+    #[test]
+    fn test_normalize_composite_key_preserves_provider() {
+        // Only the model part is normalized; the provider must not be touched.
+        assert_eq!(
+            normalize_composite_key("claude-opus-4.5::anthropic"),
+            "claude-opus-4-5::anthropic"
+        );
+        assert_eq!(
+            normalize_composite_key("claude-opus-4-5-20251101::anthropic"),
+            "claude-opus-4-5::anthropic"
+        );
+    }
+
+    #[test]
+    fn test_normalize_composite_key_provider_with_date_like_suffix() {
+        // A provider name ending in an 8-digit `20…` suffix must not be truncated
+        // by normalize_model_name's date-suffix stripping logic.
+        assert_eq!(
+            normalize_composite_key("gpt-4::custom-20250101"),
+            "gpt-4::custom-20250101"
+        );
+    }
+
+    #[test]
+    fn test_normalize_composite_key_plain_key_unchanged_behavior() {
+        // Plain (non-composite) keys keep the original normalize_model_name behavior.
+        assert_eq!(
+            normalize_composite_key("claude-opus-4.5"),
+            "claude-opus-4-5"
+        );
+        assert_eq!(normalize_composite_key("gpt-4"), "gpt-4");
+    }
+
+    #[test]
+    fn test_cache_roundtrip_preserves_composite_keys() {
+        // Composite keys written to disk must round-trip through load_or_compute
+        // unchanged.
+        let (service, _temp) = create_test_service();
+        let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
+
+        let mut models = HashMap::new();
+        models.insert(
+            "gpt-5-4::github-copilot".to_string(),
+            ModelUsage {
+                input_tokens: 100,
+                output_tokens: 50,
+                cost_usd: 0.0,
+                count: 1,
+                ..Default::default()
+            },
+        );
+        models.insert(
+            "gpt-5-4::openai".to_string(),
+            ModelUsage {
+                input_tokens: 200,
+                output_tokens: 100,
+                cost_usd: 0.05,
+                count: 1,
+                ..Default::default()
+            },
+        );
+
+        let cached = DailySummary {
+            date: yesterday,
+            total_input_tokens: 300,
+            total_output_tokens: 150,
+            total_cache_read_tokens: 0,
+            total_cache_creation_tokens: 0,
+            total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
+            total_cost_usd: 0.05,
+            models,
+        };
+        let cache = DailySummaryCache {
+            cli: "codex".to_string(),
+            version: CACHE_VERSION,
+            updated_at: chrono::Utc::now().timestamp(),
+            summaries: vec![cached],
+        };
+        let cache_path = service.cache_path("codex");
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
+
+        // With no entries to recompute, load_or_compute returns the cached data as-is.
+        let entries: Vec<UsageEntry> = vec![];
+        let (result, warning) = service.load_or_compute("codex", &entries).unwrap();
+
+        assert!(warning.is_none());
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].models.len(), 2);
+        assert!(result[0].models.contains_key("gpt-5-4::github-copilot"));
+        assert!(result[0].models.contains_key("gpt-5-4::openai"));
+    }
+
+    #[test]
+    fn test_cache_roundtrip_normalizes_composite_with_dotted_model() {
+        // When a composite key carries a dotted model, normalization touches
+        // only the model part — provider remains intact.
+        let (service, _temp) = create_test_service();
+        let yesterday = Local::now().date_naive() - chrono::Duration::days(1);
+
+        let mut models = HashMap::new();
+        // Pre-normalization key (model contains '.') simulating a stale v0 cache,
+        // forcing the version-mismatch normalization path.
+        models.insert(
+            "claude-opus-4.5::anthropic".to_string(),
+            ModelUsage {
+                input_tokens: 100,
+                ..Default::default()
+            },
+        );
+
+        let cached = DailySummary {
+            date: yesterday,
+            total_input_tokens: 100,
+            total_output_tokens: 0,
+            total_cache_read_tokens: 0,
+            total_cache_creation_tokens: 0,
+            total_thinking_tokens: 0,
+            total_cache_creation_5m_tokens: 0,
+            total_cache_creation_1h_tokens: 0,
+            total_web_search_requests: 0,
+            total_cost_usd: 0.0,
+            models,
+        };
+        // version=0 triggers the mismatch path which runs normalize_model_keys.
+        let cache = serde_json::json!({
+            "cli": "codex",
+            "version": 0,
+            "updated_at": chrono::Utc::now().timestamp(),
+            "summaries": [cached],
+        });
+        let cache_path = service.cache_path("codex");
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(&cache_path, cache.to_string()).unwrap();
+
+        let entries: Vec<UsageEntry> = vec![];
+        let (result, warning) = service.load_or_compute("codex", &entries).unwrap();
+
+        assert!(warning.is_some()); // version mismatch warning
+        assert_eq!(result.len(), 1);
+        // Model normalized (4.5 -> 4-5); provider preserved.
+        assert!(result[0].models.contains_key("claude-opus-4-5::anthropic"));
     }
 }

@@ -29,6 +29,8 @@ struct CodexPayload {
     info: Option<CodexInfo>,
     #[serde(default)]
     id: Option<String>,
+    #[serde(default)]
+    model_provider: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -102,10 +104,13 @@ impl CodexParser {
         }
 
         if data.line_type == "session_meta" {
-            if let Some(ref id) = payload.id {
-                return ParseResult::SessionId(id.clone());
+            if payload.id.is_none() && payload.model_provider.is_none() {
+                return ParseResult::Skip;
             }
-            return ParseResult::Skip;
+            return ParseResult::SessionMeta {
+                id: payload.id.clone(),
+                provider: payload.model_provider.clone(),
+            };
         }
 
         if data.line_type != "event_msg" {
@@ -154,7 +159,10 @@ impl CodexParser {
 enum ParseResult {
     Skip,
     Model(String),
-    SessionId(String),
+    SessionMeta {
+        id: Option<String>,
+        provider: Option<String>,
+    },
     TokenCount(TokenCountData),
 }
 
@@ -183,6 +191,7 @@ impl CLIParser for CodexParser {
         let mut entries: Vec<UsageEntry> = Vec::new();
         let mut current_model: Option<String> = None;
         let mut session_id: Option<String> = None;
+        let mut current_provider: Option<String> = None;
         let mut prev_totals = CodexTokenUsage {
             input_tokens: 0,
             output_tokens: 0,
@@ -203,7 +212,15 @@ impl CLIParser for CodexParser {
             match self.parse_line(&mut line_bytes) {
                 ParseResult::Skip => {}
                 ParseResult::Model(m) => current_model = Some(m),
-                ParseResult::SessionId(id) => session_id = Some(id),
+                ParseResult::SessionMeta { id, provider } => {
+                    if let Some(id) = id {
+                        session_id = Some(id);
+                    }
+                    // Replace unconditionally: if a later session_meta lacks
+                    // model_provider_id, the previous provider must NOT stick —
+                    // sticking would silently misattribute billing.
+                    current_provider = provider;
+                }
                 ParseResult::TokenCount(data) => {
                     // Compute delta: prefer last_token_usage, fallback to diff
                     let (delta_input, delta_output, delta_cached) =
@@ -252,7 +269,7 @@ impl CLIParser for CodexParser {
                         message_id: session_id.clone(),
                         request_id: None,
                         source: Some("codex".into()),
-                        provider: None,
+                        provider: current_provider.clone(),
                     });
                 }
             }
@@ -389,5 +406,61 @@ mod tests {
         let parser = CodexParser::new();
         let result = parser.parse_file(Path::new("/nonexistent/file.jsonl"));
         assert!(result.is_err());
+    }
+
+    // ========== Issue #134: provider extraction from session_meta ==========
+
+    #[test]
+    fn test_provider_extracted_from_session_meta() {
+        // Real Codex CLI v0.116+ writes `session_meta.payload.model_provider`
+        // as a lowercase string (e.g. "openai"); verified against live data.
+        let parser = CodexParser::with_data_dir(PathBuf::from("tests/fixtures/codex"));
+        let entries = parser
+            .parse_file(&fixture_path("openai-session.jsonl"))
+            .unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].provider, Some("openai".to_string()));
+        assert_eq!(entries[0].model, Some("o4-mini".to_string()));
+        assert_eq!(
+            entries[0].message_id,
+            Some("019d2e4c-e19a-7662-b2eb-0629d5ddd78b".to_string())
+        );
+    }
+
+    #[test]
+    fn test_provider_resets_when_later_session_meta_omits_it() {
+        // A later session_meta without model_provider must clear the previous
+        // value; sticking would silently misattribute billing.
+        let parser = CodexParser::with_data_dir(PathBuf::from("tests/fixtures/codex"));
+        let entries = parser
+            .parse_file(&fixture_path("multi-session-meta.jsonl"))
+            .unwrap();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].provider, Some("openai".to_string()));
+        assert_eq!(
+            entries[0].message_id,
+            Some("session-with-provider".to_string())
+        );
+        assert_eq!(entries[1].provider, None);
+        assert_eq!(
+            entries[1].message_id,
+            Some("session-without-provider".to_string())
+        );
+    }
+
+    #[test]
+    fn test_provider_none_when_session_meta_lacks_provider() {
+        // Regression: legacy fixture without model_provider must keep provider=None.
+        let parser = CodexParser::with_data_dir(PathBuf::from("tests/fixtures/codex"));
+        let entries = parser
+            .parse_file(&fixture_path("sample-session.jsonl"))
+            .unwrap();
+
+        assert!(!entries.is_empty());
+        for entry in &entries {
+            assert_eq!(entry.provider, None);
+        }
     }
 }

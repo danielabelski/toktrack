@@ -7,6 +7,20 @@ use std::collections::{HashMap, HashSet};
 
 pub struct Aggregator;
 
+/// Build the per-model breakdown key.
+///
+/// Returns the normalized model name when `provider` is `None` or empty
+/// (legacy JSON consumers stay unaffected). When a provider is present the
+/// key becomes `"{model}::{provider}"` so the same model billed through
+/// different providers aggregates into separate entries. (Issue #134)
+pub fn format_model_key(model: &str, provider: Option<&str>) -> String {
+    let normalized = normalize_model_name(model);
+    match provider {
+        Some(p) if !p.is_empty() => format!("{}::{}", normalized, p),
+        _ => normalized,
+    }
+}
+
 /// Accumulate token fields and cost from `source` into `target`
 fn accumulate_summary(target: &mut DailySummary, source: &DailySummary) {
     target.total_input_tokens = target
@@ -79,7 +93,10 @@ impl Aggregator {
         for entry in entries {
             let date = entry.local_date();
             let cost = entry.cost_usd.unwrap_or(0.0);
-            let model_name = normalize_model_name(entry.model.as_deref().unwrap_or("unknown"));
+            let model_name = format_model_key(
+                entry.model.as_deref().unwrap_or("unknown"),
+                entry.provider.as_deref(),
+            );
 
             let summary = daily_map.entry(date).or_insert_with(|| DailySummary {
                 date,
@@ -210,7 +227,10 @@ impl Aggregator {
         let mut model_map: HashMap<String, ModelUsage> = HashMap::new();
 
         for entry in entries {
-            let model_name = normalize_model_name(entry.model.as_deref().unwrap_or("unknown"));
+            let model_name = format_model_key(
+                entry.model.as_deref().unwrap_or("unknown"),
+                entry.provider.as_deref(),
+            );
             let cost = entry.cost_usd.unwrap_or(0.0);
 
             let usage = model_map.entry(model_name).or_default();
@@ -1634,5 +1654,325 @@ mod tests {
         assert_eq!(result[0].models.len(), 2);
         assert!(result[0].models.contains_key("claude"));
         assert!(result[0].models.contains_key("gpt-4"));
+    }
+
+    // ========== Issue #134: provider-aware model key ==========
+
+    #[allow(clippy::too_many_arguments)]
+    fn make_entry_with_provider(
+        year: i32,
+        month: u32,
+        day: u32,
+        model: Option<&str>,
+        provider: Option<&str>,
+        input: u64,
+        output: u64,
+        cost: Option<f64>,
+    ) -> UsageEntry {
+        UsageEntry {
+            timestamp: Utc.with_ymd_and_hms(year, month, day, 12, 0, 0).unwrap(),
+            model: model.map(String::from),
+            input_tokens: input,
+            output_tokens: output,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            thinking_tokens: 0,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            web_search_requests: 0,
+            cost_usd: cost,
+            message_id: None,
+            request_id: None,
+            source: None,
+            provider: provider.map(String::from),
+        }
+    }
+
+    #[test]
+    fn test_format_model_key_provider_none() {
+        // provider=None preserves the legacy key (backward compatible).
+        assert_eq!(format_model_key("claude-opus-4-5", None), "claude-opus-4-5");
+    }
+
+    #[test]
+    fn test_format_model_key_provider_empty() {
+        // Empty string is treated as None.
+        assert_eq!(format_model_key("gpt-4", Some("")), "gpt-4");
+    }
+
+    #[test]
+    fn test_format_model_key_provider_some() {
+        assert_eq!(
+            format_model_key("gpt-5-4", Some("github-copilot")),
+            "gpt-5-4::github-copilot"
+        );
+    }
+
+    #[test]
+    fn test_format_model_key_normalizes_model() {
+        // Model normalization (date-suffix removal) still applies.
+        assert_eq!(
+            format_model_key("claude-opus-4-5-20251101", Some("anthropic")),
+            "claude-opus-4-5::anthropic"
+        );
+    }
+
+    #[test]
+    fn test_daily_separates_same_model_different_providers() {
+        // Issue #134: same model billed through different providers must split.
+        let entries = vec![
+            make_entry_with_provider(
+                2026,
+                4,
+                14,
+                Some("gpt-5.4"),
+                Some("github-copilot"),
+                100,
+                50,
+                Some(0.0),
+            ),
+            make_entry_with_provider(
+                2026,
+                4,
+                14,
+                Some("gpt-5.4"),
+                Some("openai"),
+                200,
+                100,
+                Some(0.05),
+            ),
+        ];
+
+        let result = Aggregator::daily(&entries);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].models.len(), 2);
+        assert!(result[0].models.contains_key("gpt-5-4::github-copilot"));
+        assert!(result[0].models.contains_key("gpt-5-4::openai"));
+
+        let copilot = result[0].models.get("gpt-5-4::github-copilot").unwrap();
+        assert_eq!(copilot.input_tokens, 100);
+        let direct = result[0].models.get("gpt-5-4::openai").unwrap();
+        assert_eq!(direct.input_tokens, 200);
+    }
+
+    #[test]
+    fn test_daily_keeps_legacy_key_when_provider_none() {
+        // Regression: provider=None entries must keep the legacy key format.
+        let entries = vec![make_entry_with_provider(
+            2026,
+            4,
+            14,
+            Some("claude-opus-4-5"),
+            None,
+            100,
+            50,
+            Some(0.01),
+        )];
+
+        let result = Aggregator::daily(&entries);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].models.contains_key("claude-opus-4-5"));
+        assert!(!result[0].models.keys().any(|k| k.contains("::")));
+    }
+
+    #[test]
+    fn test_by_model_separates_providers() {
+        let entries = vec![
+            make_entry_with_provider(
+                2026,
+                4,
+                14,
+                Some("gpt-5.4"),
+                Some("github-copilot"),
+                100,
+                50,
+                Some(0.0),
+            ),
+            make_entry_with_provider(
+                2026,
+                4,
+                14,
+                Some("gpt-5.4"),
+                Some("openai"),
+                200,
+                100,
+                Some(0.05),
+            ),
+        ];
+
+        let result = Aggregator::by_model(&entries);
+
+        assert_eq!(result.len(), 2);
+        assert!(result.contains_key("gpt-5-4::github-copilot"));
+        assert!(result.contains_key("gpt-5-4::openai"));
+    }
+
+    #[test]
+    fn test_weekly_separates_providers_across_days() {
+        // weekly() must keep same-model/different-provider entries separate.
+        let entries = vec![
+            make_entry_with_provider(
+                2026,
+                4,
+                14,
+                Some("gpt-5.4"),
+                Some("github-copilot"),
+                100,
+                50,
+                Some(0.0),
+            ),
+            make_entry_with_provider(
+                2026,
+                4,
+                15,
+                Some("gpt-5.4"),
+                Some("openai"),
+                200,
+                100,
+                Some(0.05),
+            ),
+        ];
+
+        let daily = Aggregator::daily(&entries);
+        let weekly = Aggregator::weekly(&daily);
+
+        assert_eq!(weekly.len(), 1);
+        assert!(weekly[0].models.contains_key("gpt-5-4::github-copilot"));
+        assert!(weekly[0].models.contains_key("gpt-5-4::openai"));
+        assert_eq!(weekly[0].models.len(), 2);
+    }
+
+    #[test]
+    fn test_monthly_separates_providers_across_days() {
+        let entries = vec![
+            make_entry_with_provider(
+                2026,
+                4,
+                5,
+                Some("gpt-5.4"),
+                Some("github-copilot"),
+                100,
+                50,
+                Some(0.0),
+            ),
+            make_entry_with_provider(
+                2026,
+                4,
+                25,
+                Some("gpt-5.4"),
+                Some("openai"),
+                200,
+                100,
+                Some(0.05),
+            ),
+        ];
+
+        let daily = Aggregator::daily(&entries);
+        let monthly = Aggregator::monthly(&daily);
+
+        assert_eq!(monthly.len(), 1);
+        assert!(monthly[0].models.contains_key("gpt-5-4::github-copilot"));
+        assert!(monthly[0].models.contains_key("gpt-5-4::openai"));
+        assert_eq!(monthly[0].models.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_by_date_preserves_provider_separation() {
+        // merge_by_date must keep different-provider entries on the same date separate.
+        let mut models_a = HashMap::new();
+        models_a.insert(
+            "gpt-5-4::github-copilot".to_string(),
+            ModelUsage {
+                input_tokens: 100,
+                output_tokens: 50,
+                cost_usd: 0.0,
+                count: 1,
+                ..Default::default()
+            },
+        );
+        let mut models_b = HashMap::new();
+        models_b.insert(
+            "gpt-5-4::openai".to_string(),
+            ModelUsage {
+                input_tokens: 200,
+                output_tokens: 100,
+                cost_usd: 0.05,
+                count: 1,
+                ..Default::default()
+            },
+        );
+        let summaries = vec![
+            make_daily_summary_with_models(2026, 4, 14, 100, 50, 0.0, models_a),
+            make_daily_summary_with_models(2026, 4, 14, 200, 100, 0.05, models_b),
+        ];
+
+        let result = Aggregator::merge_by_date(summaries);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].models.len(), 2);
+        let copilot = result[0].models.get("gpt-5-4::github-copilot").unwrap();
+        assert_eq!(copilot.input_tokens, 100);
+        let direct = result[0].models.get("gpt-5-4::openai").unwrap();
+        assert_eq!(direct.input_tokens, 200);
+    }
+
+    #[test]
+    fn test_json_serialization_exposes_composite_keys() {
+        // Verify the serialization path used by run_*_json exposes composite keys
+        // verbatim — the user-visible contract of issue #134.
+        let entries = vec![make_entry_with_provider(
+            2026,
+            4,
+            14,
+            Some("gpt-5.4"),
+            Some("github-copilot"),
+            100,
+            50,
+            Some(0.0),
+        )];
+        let summaries = Aggregator::daily(&entries);
+        let json = serde_json::to_string(&summaries).expect("daily summary serializes");
+
+        assert!(
+            json.contains("\"gpt-5-4::github-copilot\""),
+            "composite key not exposed in JSON: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_by_model_aggregates_same_provider() {
+        // Same model + same provider must aggregate into one entry.
+        let entries = vec![
+            make_entry_with_provider(
+                2026,
+                4,
+                14,
+                Some("gpt-5.4"),
+                Some("github-copilot"),
+                100,
+                50,
+                Some(0.0),
+            ),
+            make_entry_with_provider(
+                2026,
+                4,
+                15,
+                Some("gpt-5.4"),
+                Some("github-copilot"),
+                300,
+                150,
+                Some(0.0),
+            ),
+        ];
+
+        let result = Aggregator::by_model(&entries);
+
+        assert_eq!(result.len(), 1);
+        let usage = result.get("gpt-5-4::github-copilot").unwrap();
+        assert_eq!(usage.input_tokens, 400);
+        assert_eq!(usage.count, 2);
     }
 }
