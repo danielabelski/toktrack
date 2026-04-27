@@ -106,22 +106,27 @@ If incomplete → Return to Interview Mode.
 
 ### Step 2: Run Parallel Analysis Agents
 
-```
-Task(subagent_type="general-purpose",
-     prompt="Gap analysis: missing requirements, AI pitfalls, must-NOT-do items.
-             Goal: [DRAFT What & Why]
-             Current Understanding: [DRAFT summary]")
+**Use `model="opus"` for these agents** — gap/tradeoff analysis requires deep reasoning.
 
-Task(subagent_type="general-purpose",
-     prompt="Tradeoff analysis: risk per change area, simpler alternatives, dangerous changes.
-             Proposed Approach: [DRAFT Direction]
-             Boundaries: [DRAFT Boundaries]")
+```
+Agent(subagent_type="general-purpose",
+      model="opus",
+      prompt="Gap analysis: missing requirements, AI pitfalls, must-NOT-do items.
+              Goal: [DRAFT What & Why]
+              Current Understanding: [DRAFT summary]")
+
+Agent(subagent_type="general-purpose",
+      model="opus",
+      prompt="Tradeoff analysis: risk per change area, simpler alternatives, dangerous changes.
+              Proposed Approach: [DRAFT Direction]
+              Boundaries: [DRAFT Boundaries]")
 ```
 
 External research (only for migration, new libraries, or unfamiliar tech):
 ```
-Task(subagent_type="general-purpose",
-     prompt="Research official docs for [library/framework]: [specific question]")
+Agent(subagent_type="general-purpose",
+      model="opus",
+      prompt="Research official docs for [library/framework]: [specific question]")
 ```
 
 **Gap analysis results**: Add to Must NOT Do
