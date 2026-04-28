@@ -245,6 +245,16 @@ Issues and PRs welcome!
 make check  # Run before PR
 ```
 
+## Star History
+
+<a href="https://www.star-history.com/#mag123c/toktrack&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mag123c/toktrack&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mag123c/toktrack&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mag123c/toktrack&type=Date" />
+ </picture>
+</a>
+
 ## License
 
 MIT

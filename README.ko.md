@@ -239,6 +239,16 @@ OpenCode 지원이 추가되었습니다! [지원하는 AI CLI](#지원하는-ai
 make check  # PR 전 실행
 ```
 
+## Star History
+
+<a href="https://www.star-history.com/#mag123c/toktrack&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mag123c/toktrack&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mag123c/toktrack&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mag123c/toktrack&type=Date" />
+ </picture>
+</a>
+
 ## 라이선스
 
 MIT
