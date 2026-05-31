@@ -39,6 +39,19 @@ enum ToktrackError {
 type Result<T> = std::result::Result<T, ToktrackError>;
 ```
 
+## Data Loading: Degrade Gracefully
+`DataLoaderService` aggregates many independent sources. A single source failing
+must **never** abort the whole load. Log a warning and keep aggregating the rest:
+```rust
+eprintln!("[toktrack] Warning: {} failed: {}", source.label, e);
+continue;
+```
+This applies to any new source, local or remote. For optional/remote sources that
+sync over the network, prefer falling back to the last good snapshot/cache on
+failure. Distinguish intent: a source the user selected **explicitly** may fail
+loudly, but a source pulled in **implicitly** (e.g. a configured default) must not
+break a plain command — degrade to local-only and warn.
+
 ## Commits
 ```
 type(scope): description
