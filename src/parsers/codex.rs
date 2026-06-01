@@ -61,16 +61,21 @@ pub struct CodexParser {
 }
 
 impl CodexParser {
-    /// Create a new parser with default data directory (~/.codex/sessions/)
+    /// Create a new parser with default data directory.
+    ///
+    /// Honors `CODEX_HOME` (root; replaces `~/.codex`); sessions live under
+    /// `<root>/sessions`.
     pub fn new() -> Self {
-        let home = directories::BaseDirs::new()
-            .map(|d| d.home_dir().to_path_buf())
-            .unwrap_or_else(|| {
-                eprintln!("[toktrack] Warning: Could not determine home directory");
-                PathBuf::from(".")
-            });
+        let root = super::discovery::first_env_dir(&["CODEX_HOME"]).unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|d| d.home_dir().join(".codex"))
+                .unwrap_or_else(|| {
+                    eprintln!("[toktrack] Warning: Could not determine home directory");
+                    PathBuf::from(".")
+                })
+        });
         Self {
-            data_dir: home.join(".codex").join("sessions"),
+            data_dir: root.join("sessions"),
         }
     }
 
@@ -261,10 +266,12 @@ impl CLIParser for CodexParser {
                         output_tokens: delta_output,
                         cache_read_tokens: delta_cached,
                         cache_creation_tokens: 0,
-                        thinking_tokens: 0,
+                        reasoning_tokens: 0,
                         cache_creation_5m_tokens: 0,
                         cache_creation_1h_tokens: 0,
                         web_search_requests: 0,
+                        web_fetch_requests: 0,
+                        reported_total_tokens: None,
                         cost_usd: None,
                         message_id: session_id.clone(),
                         request_id: None,
@@ -399,6 +406,20 @@ mod tests {
     fn test_parser_file_pattern() {
         let parser = CodexParser::new();
         assert_eq!(parser.file_pattern(), "**/*.jsonl");
+    }
+
+    #[test]
+    fn test_codex_home_env_override() {
+        let saved = std::env::var("CODEX_HOME").ok();
+        std::env::set_var("CODEX_HOME", "/tmp/toktrack-codex-home");
+        assert_eq!(
+            CodexParser::new().data_dir(),
+            Path::new("/tmp/toktrack-codex-home/sessions")
+        );
+        match saved {
+            Some(v) => std::env::set_var("CODEX_HOME", v),
+            None => std::env::remove_var("CODEX_HOME"),
+        }
     }
 
     #[test]

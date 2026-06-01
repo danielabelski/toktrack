@@ -812,7 +812,7 @@ fn build_app_data_from_summaries(
                     + d.total_output_tokens
                     + d.total_cache_read_tokens
                     + d.total_cache_creation_tokens
-                    + d.total_thinking_tokens,
+                    + d.total_reasoning_tokens,
             )
         })
         .collect();
@@ -980,7 +980,7 @@ mod tests {
                 total_output_tokens: 50,
                 total_cache_read_tokens: 0,
                 total_cache_creation_tokens: 0,
-                total_thinking_tokens: 0,
+                total_reasoning_tokens: 0,
                 total_cache_creation_5m_tokens: 0,
                 total_cache_creation_1h_tokens: 0,
                 total_web_search_requests: 0,
@@ -1012,6 +1012,8 @@ mod tests {
                     source: "claude".to_string(),
                     total_tokens: 3000,
                     total_cost_usd: 0.20,
+                    supported: true,
+                    estimated: false,
                 }],
                 source_daily_data: HashMap::new(),
                 source_models_data: HashMap::new(),
@@ -1143,6 +1145,8 @@ mod tests {
                 source: "opencode".to_string(),
                 total_tokens: 1000,
                 total_cost_usd: 0.05,
+                supported: true,
+                estimated: false,
             });
         }
 
@@ -1301,7 +1305,7 @@ mod tests {
             total_output_tokens: 50,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
-            total_thinking_tokens: 0,
+            total_reasoning_tokens: 0,
             total_cache_creation_5m_tokens: 0,
             total_cache_creation_1h_tokens: 0,
             total_web_search_requests: 0,

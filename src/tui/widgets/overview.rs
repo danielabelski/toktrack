@@ -92,9 +92,17 @@ impl Widget for Overview<'_> {
         let sources_label_idx = constraints.len(); // 5
         constraints.push(Constraint::Length(if show_sources { 1 } else { 0 }));
 
+        // Reserve one extra line for the estimated-cost legend when any shown
+        // source is estimated.
+        let any_estimated = self
+            .data
+            .source_usage
+            .iter()
+            .take(4)
+            .any(|s| s.supported && s.estimated);
         let sources_bars_idx = constraints.len(); // 6
         constraints.push(Constraint::Length(if show_sources {
-            source_rows
+            source_rows + u16::from(any_estimated)
         } else {
             0
         }));
@@ -158,7 +166,7 @@ impl Overview<'_> {
             + self.data.total.total_output_tokens
             + self.data.total.total_cache_read_tokens
             + self.data.total.total_cache_creation_tokens
-            + self.data.total.total_thinking_tokens;
+            + self.data.total.total_reasoning_tokens;
         let formatted = format_number(total_tokens);
 
         let hero = Paragraph::new(vec![
@@ -224,6 +232,7 @@ impl Overview<'_> {
         let full_width = 2 + TOTAL_LINE_WIDTH;
         let x_offset = area.width.saturating_sub(full_width as u16) / 2;
 
+        let mut any_estimated = false;
         for (i, source) in self.data.source_usage.iter().take(4).enumerate() {
             let y = area.y + i as u16;
             if y >= area.y + area.height {
@@ -263,6 +272,23 @@ impl Overview<'_> {
             // Token count
             let count_str = format_number(source.total_tokens);
 
+            // Unsupported sources (e.g. Antigravity) render as a dimmed, bar-less
+            // notice row instead of a usage bar.
+            if !source.supported {
+                let dim = Style::default()
+                    .fg(self.theme.muted())
+                    .add_modifier(Modifier::DIM);
+                let spans = vec![
+                    Span::raw(marker),
+                    Span::styled(name_display, dim),
+                    Span::raw("  "),
+                    Span::styled("(unsupported — no local usage)", dim),
+                ];
+                let line = Line::from(spans);
+                buf.set_line(area.x + x_offset, y, &line, area.width - x_offset);
+                continue;
+            }
+
             // Build the line
             let name_style = if is_selected {
                 Style::default()
@@ -272,7 +298,7 @@ impl Overview<'_> {
                 Style::default().fg(self.theme.text())
             };
 
-            let spans = vec![
+            let mut spans = vec![
                 Span::styled(marker, Style::default().fg(self.theme.accent())),
                 Span::styled(name_display, name_style),
                 Span::raw("  "),
@@ -280,10 +306,34 @@ impl Overview<'_> {
                 Span::raw("  "),
                 Span::styled(count_str, Style::default().fg(self.theme.text())),
             ];
+            // Estimated-cost marker: this source's cost is LiteLLM-calculated.
+            if source.estimated {
+                any_estimated = true;
+                spans.push(Span::styled(
+                    " ~",
+                    Style::default()
+                        .fg(self.theme.muted())
+                        .add_modifier(Modifier::DIM),
+                ));
+            }
 
             // Render centered
             let line = Line::from(spans);
             buf.set_line(area.x + x_offset, y, &line, area.width - x_offset);
+        }
+
+        // Legend for the estimated-cost marker (only when shown).
+        if any_estimated {
+            let y = area.y + self.data.source_usage.len().min(4) as u16;
+            if y < area.y + area.height {
+                let legend = Line::from(Span::styled(
+                    "  ~ = estimated cost (LiteLLM)",
+                    Style::default()
+                        .fg(self.theme.muted())
+                        .add_modifier(Modifier::DIM),
+                ));
+                buf.set_line(area.x + x_offset, y, &legend, area.width - x_offset);
+            }
         }
     }
 
@@ -370,5 +420,92 @@ mod tests {
     #[test]
     fn test_format_number_million() {
         assert_eq!(format_number(1000000), "1,000,000");
+    }
+
+    #[test]
+    fn test_unsupported_source_renders_disabled_row() {
+        let total = TotalSummary::default();
+        let daily: Vec<(NaiveDate, u64)> = vec![];
+        let sources = vec![
+            SourceUsage {
+                source: "claude".into(),
+                total_tokens: 100,
+                total_cost_usd: 1.0,
+                supported: true,
+                estimated: false,
+            },
+            SourceUsage {
+                source: "antigravity".into(),
+                total_tokens: 0,
+                total_cost_usd: 0.0,
+                supported: false,
+                estimated: false,
+            },
+        ];
+        let data = OverviewData {
+            total: &total,
+            daily_tokens: &daily,
+            source_usage: &sources,
+            selected_source: None,
+            selected_tab: Tab::Overview,
+        };
+        let area = Rect::new(0, 0, 120, 30);
+        let mut buf = Buffer::empty(area);
+        Overview::new(
+            data,
+            NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
+            Theme::Dark,
+        )
+        .render(area, &mut buf);
+
+        let mut text = String::new();
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                text.push_str(buf[(x, y)].symbol());
+            }
+        }
+        assert!(
+            text.contains("unsupported"),
+            "overview should render the unsupported notice for disabled sources"
+        );
+    }
+
+    #[test]
+    fn test_estimated_source_renders_marker_and_legend() {
+        let total = TotalSummary::default();
+        let daily: Vec<(NaiveDate, u64)> = vec![];
+        let sources = vec![SourceUsage {
+            source: "gemini".into(),
+            total_tokens: 500,
+            total_cost_usd: 0.10,
+            supported: true,
+            estimated: true,
+        }];
+        let data = OverviewData {
+            total: &total,
+            daily_tokens: &daily,
+            source_usage: &sources,
+            selected_source: None,
+            selected_tab: Tab::Overview,
+        };
+        let area = Rect::new(0, 0, 120, 30);
+        let mut buf = Buffer::empty(area);
+        Overview::new(
+            data,
+            NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
+            Theme::Dark,
+        )
+        .render(area, &mut buf);
+
+        let mut text = String::new();
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                text.push_str(buf[(x, y)].symbol());
+            }
+        }
+        assert!(
+            text.contains("estimated cost"),
+            "overview should render the estimated-cost legend"
+        );
     }
 }

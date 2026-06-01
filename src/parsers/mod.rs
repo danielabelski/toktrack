@@ -2,6 +2,7 @@
 
 mod claude;
 mod codex;
+pub mod discovery;
 mod gemini;
 mod opencode;
 mod pi_agent;
@@ -109,6 +110,7 @@ impl ParserRegistry {
                 Box::new(ClaudeCodeParser::new()),
                 Box::new(CodexParser::new()),
                 Box::new(GeminiParser::new()),
+                Box::new(GeminiParser::new_qwen()),
                 Box::new(OpenCodeParser::new()),
                 Box::new(PiAgentParser::new()),
             ],
@@ -143,10 +145,11 @@ mod tests {
     #[test]
     fn test_registry_default_parsers() {
         let registry = ParserRegistry::new();
-        assert_eq!(registry.parsers().len(), 5);
+        assert_eq!(registry.parsers().len(), 6);
         assert!(registry.get("claude-code").is_some());
         assert!(registry.get("codex").is_some());
         assert!(registry.get("gemini").is_some());
+        assert!(registry.get("qwen").is_some());
         assert!(registry.get("opencode").is_some());
         assert!(registry.get("pi-agent").is_some());
     }
@@ -169,8 +172,9 @@ mod tests {
         let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let result = parser.parse_all().unwrap();
         assert!(!result.is_empty());
-        // claude-sample.jsonl (4) + empty.jsonl (0) + multi/*.jsonl (2) = 6
-        assert_eq!(result.len(), 6);
+        // claude-sample.jsonl (4) + empty.jsonl (0) + multi/*.jsonl (2)
+        //   + claude/real-shape-session.jsonl (1) = 7
+        assert_eq!(result.len(), 7);
     }
 
     #[test]
@@ -186,8 +190,8 @@ mod tests {
         // tests/fixtures has claude-sample.jsonl (3), empty.jsonl (0), multi/*.jsonl (2)
         let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
         let result = parser.parse_all().unwrap();
-        // empty.jsonl contributes 0 entries, total = 6
-        assert_eq!(result.len(), 6);
+        // empty.jsonl contributes 0 entries, total = 7
+        assert_eq!(result.len(), 7);
     }
 
     #[test]
@@ -198,7 +202,7 @@ mod tests {
         let since = std::time::UNIX_EPOCH;
         let result = parser.parse_recent_files(since).unwrap();
         // Same as parse_all: all files are "recent" relative to epoch
-        assert_eq!(result.len(), 6);
+        assert_eq!(result.len(), 7);
     }
 
     #[test]
@@ -230,7 +234,9 @@ mod tests {
         // gemini/tmp_jsonl/chats/parent-session-xyz/sub-abc.jsonl,
         // gemini/tmp_jsonl_malformed/chats/session-bad.jsonl,
         // gemini/tmp_jsonl_no_meta/chats/session-*.jsonl
-        // (claude parser uses `**/*.jsonl`; gemini-format files parse to 0 entries.)
-        assert_eq!(files.len(), 13);
+        // claude/real-shape-session.jsonl
+        // qwen/proj/chats/session-*.jsonl
+        // (claude parser uses `**/*.jsonl`; gemini/qwen-format files parse to 0 entries.)
+        assert_eq!(files.len(), 15);
     }
 }

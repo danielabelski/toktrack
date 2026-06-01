@@ -24,6 +24,8 @@ pub struct SourceReport {
     pub name: String,
     pub total_tokens: u64,
     pub cost_usd: f64,
+    /// True when this source's cost is a LiteLLM estimate (no upstream cost).
+    pub estimated: bool,
 }
 
 /// A single day's report
@@ -152,6 +154,7 @@ impl ReportData {
                     name: source_name.clone(),
                     total_tokens,
                     cost_usd: cost,
+                    estimated: false, // set by the caller from SourceUsage
                 })
             })
             .collect();
@@ -196,7 +199,7 @@ mod tests {
             total_output_tokens: 500,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
-            total_thinking_tokens: 0,
+            total_reasoning_tokens: 0,
             total_cache_creation_5m_tokens: 0,
             total_cache_creation_1h_tokens: 0,
             total_web_search_requests: 0,
@@ -310,7 +313,7 @@ mod tests {
             total_output_tokens: 150,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
-            total_thinking_tokens: 0,
+            total_reasoning_tokens: 0,
             total_cache_creation_5m_tokens: 0,
             total_cache_creation_1h_tokens: 0,
             total_web_search_requests: 0,

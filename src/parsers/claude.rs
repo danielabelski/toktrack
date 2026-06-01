@@ -36,6 +36,7 @@ struct CacheCreationDetail {
 #[derive(Deserialize, Default)]
 struct ServerToolUse {
     web_search_requests: Option<u64>,
+    web_fetch_requests: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -54,16 +55,21 @@ pub struct ClaudeCodeParser {
 }
 
 impl ClaudeCodeParser {
-    /// Create a new parser with default data directory (~/.claude/projects/)
+    /// Create a new parser with default data directory.
+    ///
+    /// Honors `CLAUDE_CONFIG_DIR` (root; replaces `~/.claude`); projects live
+    /// under `<root>/projects`.
     pub fn new() -> Self {
-        let home = directories::BaseDirs::new()
-            .map(|d| d.home_dir().to_path_buf())
-            .unwrap_or_else(|| {
-                eprintln!("[toktrack] Warning: Could not determine home directory");
-                PathBuf::from(".")
-            });
+        let root = super::discovery::first_env_dir(&["CLAUDE_CONFIG_DIR"]).unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|d| d.home_dir().join(".claude"))
+                .unwrap_or_else(|| {
+                    eprintln!("[toktrack] Warning: Could not determine home directory");
+                    PathBuf::from(".")
+                })
+        });
         Self {
-            data_dir: home.join(".claude").join("projects"),
+            data_dir: root.join("projects"),
         }
     }
 
@@ -111,7 +117,7 @@ impl ClaudeCodeParser {
             output_tokens: usage.output_tokens,
             cache_read_tokens: usage.cache_read_input_tokens.unwrap_or(0),
             cache_creation_tokens: usage.cache_creation_input_tokens.unwrap_or(0),
-            thinking_tokens: 0,
+            reasoning_tokens: 0,
             cache_creation_5m_tokens: cache_detail
                 .and_then(|d| d.ephemeral_5m_input_tokens)
                 .unwrap_or(0),
@@ -119,6 +125,8 @@ impl ClaudeCodeParser {
                 .and_then(|d| d.ephemeral_1h_input_tokens)
                 .unwrap_or(0),
             web_search_requests: tool_use.and_then(|t| t.web_search_requests).unwrap_or(0),
+            web_fetch_requests: tool_use.and_then(|t| t.web_fetch_requests).unwrap_or(0),
+            reported_total_tokens: None,
             cost_usd: data.cost_usd,
             message_id: message.id.map(String::from),
             request_id: data.request_id.map(String::from),
@@ -184,6 +192,34 @@ mod tests {
             .join("tests")
             .join("fixtures")
             .join(name)
+    }
+
+    /// Token-semantics contract test pinned to the REAL Claude Code log shape
+    /// (sanitized from `~/.claude/projects`). Proves toktrack (a) tolerates fields
+    /// it does not read (`web_fetch_requests`, `service_tier`, `iterations`, `speed`)
+    /// and (b) extracts each token field per the v2 contract. Modern Claude logs
+    /// omit top-level `costUSD`, so cost is LiteLLM-calculated → `cost_usd` is None.
+    #[test]
+    fn test_real_shape_claude_contract() {
+        let parser = ClaudeCodeParser::with_data_dir(PathBuf::from("tests/fixtures"));
+        let entries = parser
+            .parse_file(&fixture_path("claude/real-shape-session.jsonl"))
+            .unwrap();
+
+        assert_eq!(entries.len(), 1, "only the assistant line carries usage");
+        let e = &entries[0];
+        assert_eq!(e.model.as_deref(), Some("claude-opus-4-1-20250805"));
+        assert_eq!(e.input_tokens, 6); // non-cached (Anthropic input excludes cache)
+        assert_eq!(e.cache_creation_tokens, 19693);
+        assert_eq!(e.cache_read_tokens, 17079);
+        assert_eq!(e.output_tokens, 1075);
+        assert_eq!(e.cache_creation_5m_tokens, 0);
+        assert_eq!(e.cache_creation_1h_tokens, 19693);
+        assert_eq!(e.web_search_requests, 2);
+        assert_eq!(e.web_fetch_requests, 1); // captured though not auto-priced
+        assert_eq!(e.reasoning_tokens, 0); // folded into output by Anthropic
+        assert_eq!(e.reported_total_tokens, None);
+        assert_eq!(e.cost_usd, None); // modern logs omit costUSD → LiteLLM-calculated
     }
 
     #[test]
@@ -288,6 +324,20 @@ mod tests {
     fn test_parser_file_pattern() {
         let parser = ClaudeCodeParser::new();
         assert_eq!(parser.file_pattern(), "**/*.jsonl");
+    }
+
+    #[test]
+    fn test_claude_config_dir_env_override() {
+        let saved = std::env::var("CLAUDE_CONFIG_DIR").ok();
+        std::env::set_var("CLAUDE_CONFIG_DIR", "/tmp/toktrack-claude-cfg");
+        assert_eq!(
+            ClaudeCodeParser::new().data_dir(),
+            Path::new("/tmp/toktrack-claude-cfg/projects")
+        );
+        match saved {
+            Some(v) => std::env::set_var("CLAUDE_CONFIG_DIR", v),
+            None => std::env::remove_var("CLAUDE_CONFIG_DIR"),
+        }
     }
 
     #[test]
