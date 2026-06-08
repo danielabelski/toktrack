@@ -21,13 +21,13 @@ allowed-tools:
 ## Chain (MUST)
 | Previous | Current | Next |
 |----------|---------|------|
-| Session start | /clarify | EnterPlanMode() → /implement |
+| Session start | /clarify | Present PLAN inline → /implement |
 
 ## Core Model
 
 ```
 /clarify → Measure complexity → Clear enough?
-                                ├─ Yes → EnterPlanMode()
+                                ├─ Yes → Present PLAN inline → /implement
                                 └─ No  → Deeper clarify (explore, analyze, DRAFT...)
                                          → Re-measure → Repeat
 ```
@@ -59,7 +59,7 @@ Measure complexity internally upon receiving request (do not expose to user).
 
 ## Shallow Path (Low Complexity)
 
-Remove ambiguity via quick Q&A, generate minimal specs, and enter Plan Mode.
+Remove ambiguity via quick Q&A, generate minimal specs, and present the PLAN inline.
 
 ### Execution
 
@@ -68,7 +68,7 @@ Remove ambiguity via quick Q&A, generate minimal specs, and enter Plan Mode.
 3. **Escalation Check**: Check escalation conditions (see below)
 4. **Create DRAFT**: Write `.dev/specs/{name}/DRAFT.md` (minimal version — What, Why, Scope, Success Criteria)
 5. **Summary + Create PLAN**: Before/After comparison → Write `.dev/specs/{name}/PLAN.md`
-6. **Auto Plan**: Call `EnterPlanMode()` — plan file은 반드시 `.dev/specs/{name}/PLAN.md`에 작성
+6. **Present PLAN**: Present the PLAN inline in the conversation (do NOT enter plan mode), then immediately call `/implement`. plan file은 반드시 `.dev/specs/{name}/PLAN.md`에 작성
 
 ### Rules
 - No assumptions → Ask questions
@@ -100,7 +100,7 @@ Summary:
 2. 3 parallel exploration agents → Understand codebase
 3. Generate DRAFT → Interview → Continuously update
 4. On user explicit request → Analysis agents → Generate PLAN → Reviewer loop
-5. After approval → `EnterPlanMode()`
+5. Present PLAN inline → immediately call `/implement` (no plan mode entry)
 
 ---
 
@@ -131,8 +131,7 @@ Plan files must include:
 - Verification method (test execution)
 - Confirmation that `.dev/DECISIONS.md` recording is complete
 
-**Plan File Location**: Plan Mode 진입 시 plan_file 경로를 `.dev/specs/{name}/PLAN.md`로 지정.
-시스템 Plan Mode의 `.claude/plans/` 대신 `.dev/specs/`를 사용.
+**Plan File Location**: PLAN은 반드시 `.dev/specs/{name}/PLAN.md`에 작성한다.
 
 **Important**: Plans that do not use `/implement` will not be approved.
 
@@ -140,4 +139,4 @@ Plan files must include:
 
 ## NEXT STEP (Auto-execute)
 
-On plan approval, call `/implement` **immediately**. Do not ask "Should I implement?".
+After presenting the PLAN inline, call `/implement` **immediately**. Do NOT enter plan mode; do not ask "Should I implement?".
