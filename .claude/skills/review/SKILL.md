@@ -22,6 +22,12 @@ Code Review Agent만 단독 실행.
 
 글로벌 체크리스트에 더해, Code Review Agent 프롬프트에 다음을 추가:
 
+### Critical (PLAN 게이트)
+
+| Category | Items |
+|----------|-------|
+| PLAN 가정 반증 | diff가 PLAN의 `[agent-inferred]`/`[unverified-gate]` 가정을 **반증**하는가 (falsified → P1+, wrap에 운반) |
+
 ### Rust 전용
 
 | Category | Items |
@@ -56,6 +62,7 @@ clippy 경고가 있으면 리뷰 시작 전 FAIL 처리 (verify에서 잡혔어
 ## Execution
 
 1. Collect context (diff, conventions, architecture, Sprint Contract)
+   - PLAN provenance 태그/게이트 (있으면) — `[agent-inferred]` / `[unverified-gate]`
 2. Launch **Code Review Agent only** (feature-dev:code-reviewer)
    - 글로벌 `agents/code-review.md` 프롬프트 + 위 Rust/TUI 체크리스트 append
 3. Parse verdict → PASS → /wrap, FAIL → fix → /verify → re-review
