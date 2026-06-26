@@ -14,7 +14,7 @@
 
 **The token & cost tracker that never loses your history.** Most tools re-read your CLI's session files on every run — so when Claude Code deletes them after 30 days, your cost history goes with them. toktrack keeps a **persistent cache**, so your history survives.
 
-Track usage across **all your AI coding CLIs** — Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, and PI Agent — in one dashboard. Built in Rust, so it stays fast even on huge histories (simd-json + rayon).
+Track usage across **all your AI coding CLIs** — Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, PI Agent, and Antigravity — in one dashboard. Built in Rust, so it stays fast even on huge histories (simd-json + rayon).
 
 ![toktrack overview](assets/demo.gif)
 
@@ -29,9 +29,9 @@ Track usage across **all your AI coding CLIs** — Claude Code, Codex CLI, Gemin
 ## Features
 
 - **Data Preservation** — Persistent cache keeps your cost history even after a CLI deletes its own session files
-- **Multi-CLI Support** — Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, PI Agent in one place
+- **Multi-CLI Support** — Claude Code, Codex CLI, Gemini CLI, Qwen Code, OpenCode, PI Agent, Antigravity in one place
 - **TUI Dashboard** — 5 tabs (Overview, Stats, Models, Projects, Audit) with daily/weekly/monthly views
-- **Per-Project Breakdown** — the Projects tab shows token & cost usage per project (the session working directory), for CLIs that record one — currently Claude Code, Codex, OpenCode, PI Agent, Gemini CLI, and Qwen Code. Drill into any project for its day-by-day, per-model breakdown. Usage from CLIs that don't record a project is grouped under `(no project)`. Project details are cached, so they survive past the CLI's 30-day deletion
+- **Per-Project Breakdown** — the Projects tab shows token & cost usage per project (the session working directory), for CLIs that record one. Drill into any project for its day-by-day, per-model breakdown. Usage from CLIs that don't record a project is grouped under `(no project)`. Project details are cached, so they survive past the CLI's 30-day deletion
 - **CLI Commands** — `daily`, `weekly`, `monthly`, `stats` with JSON output support
 - **Usage Reports** — Shareable text & SVG receipts via `toktrack report`
 - **Fast on huge histories** — simd-json + rayon parallel parsing (~3 GiB/s); cached runs in ~0.04s
@@ -208,9 +208,9 @@ existing snapshot/cache for that remote.
 | Qwen Code | ✅ | `~/.qwen/tmp/*/chats/` |
 | OpenCode | ✅ | `~/.local/share/opencode/storage/message/` |
 | PI Agent | ✅ | `~/.pi/agent/sessions/` |
-| Antigravity | ⚠️ detected, unsupported | `~/.gemini/antigravity-cli/` (no file-readable token usage) |
+| Antigravity | ✅ | `~/.gemini/antigravity-{ide,cli}/conversations/*.db` |
 
-> Costs from sources that don't record their own price (Gemini, Qwen, Codex, and modern Claude logs)
+> Costs from sources that don't record their own price (Gemini, Qwen, Codex, Antigravity, and modern Claude logs)
 > are computed from [LiteLLM](https://github.com/BerriAI/litellm) pricing and shown with a `~` marker
 > (estimated). Pricing works offline via a bundled snapshot when the network is unavailable.
 
@@ -335,7 +335,7 @@ cargo bench   # Benchmarks
 
 ## Roadmap
 
-Now tracking 6 CLIs (Claude Code, Codex, Gemini, Qwen Code, OpenCode, PI Agent) — see [Supported AI CLIs](#supported-ai-clis). Planned: live/burn-rate monitoring, MCP server / statusline, more CLIs (Goose, Amp, Kimi, Copilot).
+Now tracking 7 CLIs (Claude Code, Codex, Gemini, Qwen Code, OpenCode, PI Agent, Antigravity) — see [Supported AI CLIs](#supported-ai-clis). Planned: live/burn-rate monitoring, MCP server / statusline, more CLIs (Goose, Amp, Kimi, Copilot).
 
 ## Contributing
 
