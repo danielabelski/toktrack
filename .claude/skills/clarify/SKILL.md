@@ -32,7 +32,21 @@ allowed-tools:
                                          → Re-measure → Repeat
 ```
 
-Exit condition: **"Is this enough info to implement?"**
+Exit condition: **"Is this enough info to implement?"** — Critical Unknown=0 + 잔여는 가시화(Provenance).
+
+---
+
+## 참조 파일 (필요 시 로드 — chaining)
+
+| 언제 | 파일 |
+|------|------|
+| 핵심 결정·가정에 출처 태그 / probe 판단 | `references/provenance.md` |
+| PLAN 작성 직전 사용자 확인 | `references/checkpoint.md` |
+| 문서 권위·읽는 순서 헷갈릴 때 | `references/doc-roles.md` |
+| Deep 경로 전체 절차 | `deep/DEEP.md` |
+| PLAN/DRAFT 구조 (Lite/Full + Clarify Verdict) | `templates/` |
+
+> 인라인 핵심만: **probe-don't-tag**(싸게 실측되면 태그 말고 실측), **PLAN=의도 · WRAP/DECISIONS=사실**, **추론은 숨기지 않는다**. 상세는 위 reference.
 
 ---
 

@@ -217,8 +217,8 @@ Identify task type and establish strategy.
 - [ ] Success Criteria agreed
 - [ ] User requests "make it a plan"
 
-### When to Delete
-- After Plan is approved by reviewer
+### When to Preserve
+- DRAFT는 Plan 생성·승인 후에도 삭제하지 않는다 — 합의 과정의 기록으로 archive에 남긴다.
 
 ---
 

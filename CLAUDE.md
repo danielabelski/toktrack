@@ -18,9 +18,10 @@ cargo build --release
 
 ### 코드 구현 작업
 ```
-/clarify → Plan Mode → /implement → /verify → /review → /wrap
+/clarify → /implement → /verify → /review → /wrap
 ```
 각 단계 완료 후 즉시 다음 호출. 확인 묻지 말 것.
+> clarify는 plan mode에 진입하지 않는다 — PLAN을 대화에 인라인 제시 후 곧바로 /implement.
 
 ### 문서/마케팅/설정 작업
 ```

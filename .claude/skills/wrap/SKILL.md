@@ -32,8 +32,14 @@ Git Status → Doc Check → User Selection → Execute → Complete
    - [ ] PLAN과 실제 구현 차이 → `**구현 노트**` 추가
    - [ ] 새로운 패턴/컨벤션 → conventions.md도 업데이트
 
-3. **User Selection**: AskUserQuestion
-4. **Execute**: Run selected items
+3. **Plan Reconciliation (MUST)**
+
+   PLAN의 provenance 태그/게이트(`[unverified-gate]`/`[agent-inferred]`/Phase 0)를 1:1로 정산한다 — **닫거나(confirmed/falsified/changed) 명시적 위임(delegated). 조용한 TODO 금지.** 미정산이면 wrap 미완료.
+
+   상세 절차·delegated 블록·승격 기준(WRAP=상세/DECISIONS=why/CLAUDE.md=치명·반복) → `references/reconciliation.md`
+
+4. **User Selection**: AskUserQuestion
+5. **Execute**: Run selected items
 
 ## DSL Rules (ai-context)
 - Table > prose
