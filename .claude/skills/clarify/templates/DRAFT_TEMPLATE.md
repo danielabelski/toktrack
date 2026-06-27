@@ -218,7 +218,7 @@ Identify task type and establish strategy.
 - [ ] User requests "make it a plan"
 
 ### When to Preserve
-- DRAFT는 Plan 생성·승인 후에도 삭제하지 않는다 — 합의 과정의 기록으로 archive에 남긴다.
+- DRAFT is not deleted after the Plan is generated and approved — it remains as an archive of the agreement process.
 
 ---
 

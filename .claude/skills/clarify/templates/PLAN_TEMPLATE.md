@@ -8,23 +8,23 @@
 
 ## Clarify Verdict
 
-> /clarify가 PLAN 작성 직전에 기입 — Pre-Plan Checkpoint의 출력. /implement가 이 블록을 읽고 scope를 확정한다.
+> /clarify fills this in just before writing the PLAN — output of Pre-Plan Checkpoint. /implement reads this block to finalize scope.
 
 ```
 ## Clarify Verdict
-- 사용자 결정: [user-confirmed 항목]
-- 에이전트 실측: [verified 항목 + file:line 또는 명령]
-- 에이전트 추론(미검증): [남은 agent-inferred — 있으면 왜 probe 안 했는지]
-- 미검증 게이트: [unverified-gate: probe/owner/due]
-- 외부 선행조건: [external-prereq]
+- User decisions: [user-confirmed items]
+- Agent verified: [verified items + file:line or command]
+- Agent inferred (unverified): [remaining agent-inferred — if any, why probe was skipped]
+- Unverified gates: [unverified-gate: probe/owner/due]
+- External prerequisites: [external-prereq]
 ```
 
 ---
 
 ## PLAN-Lite (Low Complexity)
 
-> **Shallow Path 결과 전용** — Orchestrator-Worker 오버헤드가 불필요한 단일 파일·모듈 수준 변경.
-> High Complexity이면 이 섹션을 건너뛰고 아래 PLAN-Full 구조를 사용한다.
+> **Shallow Path results only** — single-file or module-level changes where Orchestrator-Worker overhead is unnecessary.
+> If High Complexity, skip this section and use the PLAN-Full structure below.
 
 ```markdown
 # {Plan Title} (Lite)
@@ -32,7 +32,7 @@
 > [1-2 sentences: what this accomplishes]
 
 ## Clarify Verdict
-(위 블록 기입)
+(paste block above)
 
 ## Goal
 [1-2 sentences]

@@ -1,17 +1,17 @@
-# Pre-Plan Checkpoint (PLAN 작성 직전)
+# Pre-Plan Checkpoint (immediately before writing the PLAN)
 
-100% 싱크가 아니라 **틀린 가정 조기 노출** 장치. PLAN 쓰기 직전 딱 이 수준만 사용자에게 보인다:
+Not a 100%-sync, but a device for **early exposure of wrong assumptions**. Show the user exactly this much immediately before writing the PLAN:
 
 ```
 ## Pre-Plan Checkpoint
-- 사용자 결정: [user-confirmed 항목]
-- 에이전트 실측: [verified 항목 + evidence]
-- 에이전트 추론(미검증): [남은 agent-inferred — 있으면 왜 probe 안 했는지]
-- 미검증 게이트: [unverified-gate: probe/owner/due]
-- 외부 선행조건: [external-prereq]
-방향 틀린 게 있으면 수정, 없으면 PLAN 고정.
+- User decisions: [user-confirmed items]
+- Agent measurements: [verified items + evidence]
+- Agent inferences (unverified): [remaining agent-inferred — if any, explain why not probed]
+- Unverified gates: [unverified-gate: probe/owner/due]
+- External prerequisites: [external-prereq]
+Correct anything wrong with the direction; if nothing, lock the PLAN.
 ```
 
-- 이 체크포인트의 산출물이 곧 provenance 태그라 **추가 노동 0**.
-- 추론(미검증)은 숨기지 않는다.
-- **auto-reject는 여기서 하지 않는다(throughput) — wrap이 미정산 gate를 reject한다.**
+- The output of this checkpoint is the provenance tags themselves — **zero extra effort**.
+- Inferences (unverified) are not hidden.
+- **No auto-reject here (throughput) — wrap rejects unsettled gates.**

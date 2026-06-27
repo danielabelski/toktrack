@@ -201,7 +201,7 @@ Everything else (wording, format, field completeness) → Cosmetic.
    - **Reference**: .dev/specs/{name}/PLAN.md
    ```
 3. Inform user that plan is ready
-4. Present the PLAN inline in the conversation (do NOT enter plan mode), then immediately call `/implement`. plan file은 반드시 `.dev/specs/{name}/PLAN.md`에 작성
+4. Present the PLAN inline in the conversation (do NOT enter plan mode), then immediately call `/implement`. plan file must be written to `.dev/specs/{name}/PLAN.md`
 
 ---
 

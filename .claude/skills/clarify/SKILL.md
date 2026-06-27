@@ -32,21 +32,21 @@ allowed-tools:
                                          → Re-measure → Repeat
 ```
 
-Exit condition: **"Is this enough info to implement?"** — Critical Unknown=0 + 잔여는 가시화(Provenance).
+Exit condition: **"Is this enough info to implement?"** — Critical Unknown=0 + remaining items are made visible (Provenance).
 
 ---
 
-## 참조 파일 (필요 시 로드 — chaining)
+## Reference Files (load as needed — chaining)
 
-| 언제 | 파일 |
+| When | File |
 |------|------|
-| 핵심 결정·가정에 출처 태그 / probe 판단 | `references/provenance.md` |
-| PLAN 작성 직전 사용자 확인 | `references/checkpoint.md` |
-| 문서 권위·읽는 순서 헷갈릴 때 | `references/doc-roles.md` |
-| Deep 경로 전체 절차 | `deep/DEEP.md` |
-| PLAN/DRAFT 구조 (Lite/Full + Clarify Verdict) | `templates/` |
+| Tagging provenance on key decisions/assumptions / probe decisions | `references/provenance.md` |
+| Pre-PLAN user confirmation | `references/checkpoint.md` |
+| When document authority/reading order is unclear | `references/doc-roles.md` |
+| Full Deep path procedure | `deep/DEEP.md` |
+| PLAN/DRAFT structure (Lite/Full + Clarify Verdict) | `templates/` |
 
-> 인라인 핵심만: **probe-don't-tag**(싸게 실측되면 태그 말고 실측), **PLAN=의도 · WRAP/DECISIONS=사실**, **추론은 숨기지 않는다**. 상세는 위 reference.
+> Inline essentials only: **probe-don't-tag** (if cheaply verifiable, measure instead of tagging), **PLAN=intent · WRAP/DECISIONS=fact**, **do not hide inferences**. Details in the references above.
 
 ---
 
@@ -82,7 +82,7 @@ Remove ambiguity via quick Q&A, generate minimal specs, and present the PLAN inl
 3. **Escalation Check**: Check escalation conditions (see below)
 4. **Create DRAFT**: Write `.dev/specs/{name}/DRAFT.md` (minimal version — What, Why, Scope, Success Criteria)
 5. **Summary + Create PLAN**: Before/After comparison → Write `.dev/specs/{name}/PLAN.md`
-6. **Present PLAN**: Present the PLAN inline in the conversation (do NOT enter plan mode), then immediately call `/implement`. plan file은 반드시 `.dev/specs/{name}/PLAN.md`에 작성
+6. **Present PLAN**: Present the PLAN inline in the conversation (do NOT enter plan mode), then immediately call `/implement`. The plan file must be written to `.dev/specs/{name}/PLAN.md`
 
 ### Rules
 - No assumptions → Ask questions
@@ -145,7 +145,7 @@ Plan files must include:
 - Verification method (test execution)
 - Confirmation that `.dev/DECISIONS.md` recording is complete
 
-**Plan File Location**: PLAN은 반드시 `.dev/specs/{name}/PLAN.md`에 작성한다.
+**Plan File Location**: The PLAN must be written to `.dev/specs/{name}/PLAN.md`.
 
 **Important**: Plans that do not use `/implement` will not be approved.
 

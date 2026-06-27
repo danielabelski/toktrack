@@ -21,9 +21,9 @@ Analysis → Gate pre-run → TDD(RED→GREEN→REFACTOR) → /verify → /revie
    Run the PLAN's `[unverified-gate: probe=…]` / Phase 0 probes before RED. Fail → halt + report (don't build on a falsified assumption). Map Acceptance/DoD → RED tests; mark unverifiable as `[unverified-gate]` to carry to verify/wrap. Detail → `references/gates.md` (tag vocab: `../clarify/references/provenance.md`).
 
    Rust-specific probes:
-   - `cargo check` — 컴파일 가능 여부
-   - `cargo test -- --list` — 테스트 타깃 존재 확인
-   - `make check` — fmt + clippy + test 통합 게이트
+   - `cargo check` — whether it compiles
+   - `cargo test -- --list` — verify test targets exist
+   - `make check` — unified fmt + clippy + test gate
 
 3. **TDD Cycle**:
    - RED: Write failing test first

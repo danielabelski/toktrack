@@ -1,0 +1,77 @@
+name: Claude PR Review
+
+# Automated, author-perspective PR review (see .github/claude-review-guide.md).
+# Trust model: pull_request_target so secrets are available, but we check out the
+# trusted BASE ref only and read the PR's changes via `gh pr diff` (never execute
+# untrusted head code). Forks are skipped unless a maintainer adds the
+# `claude-review` label; own-repo branches and collaborators run automatically.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    # Run only for trusted authors, or when a maintainer opts a fork PR in via label.
+    if: >-
+      github.event.pull_request.author_association == 'OWNER' ||
+      github.event.pull_request.author_association == 'MEMBER' ||
+      github.event.pull_request.author_association == 'COLLABORATOR' ||
+      contains(github.event.pull_request.labels.*.name, 'claude-review')
+    steps:
+      # Trusted base checkout — gives the bot the guide + ai-context from OUR branch,
+      # not from the PR. Never check out the PR head into the workspace here.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+
+            First, read these checked-in files and use them as your review rubric:
+            - .github/claude-review-guide.md      (identity cores, review dimensions, rigor)
+            - .claude/ai-context/architecture.md  (layers, paths, traits, data flow)
+            - .claude/ai-context/conventions.md   (naming, error handling, TDD)
+
+            Then read the PR with `gh pr diff ${{ github.event.pull_request.number }}`
+            and `gh pr view ${{ github.event.pull_request.number }}`.
+
+            Review in this priority order:
+            1. Dependency & side-effects on related LLM sources / parsers / cache readers —
+               ripple to other code paths, forward schema drift, backward-compat with older
+               source-tool versions (flag missing old-version/unknown-schema fixtures).
+            2. Breaking changes — cache schema, public CLI behavior, anything irreversible.
+               State the blast radius and whether a migration/fallback exists.
+            3. Environment/state matrix the contributor couldn't test — OS, data shape
+               (empty/large/corrupt/partial/permissions), locale/TZ/DST, concurrency,
+               terminal, first-run vs upgrade.
+            4. Architecture/design fit and Rust/TUI code health.
+
+            Apply asymmetric rigor: be ruthless on the two identity cores, on
+            irreversible/breaking changes, and on the matrix. Do NOT bikeshed style or
+            naming — fmt/clippy own those. If the PR is clean on the cores and matrix,
+            say so and approve.
+
+            Post file-anchored inline comments for concrete issues via
+            mcp__github_inline_comment__create_inline_comment (confirmed: true). Then post
+            ONE short summary via `gh pr comment` — verdict plus the top 1–3 issues, and
+            explicitly note any core/breaking/matrix risk (or that none was found). Write in
+            English. Do not emit review text as chat output.
+          # Model: Opus for depth on dependency/breaking-change analysis. Swap to
+          # `--model claude-sonnet-4-6` to cut cost ~5x if PR volume grows.
+          claude_args: |
+            --model claude-opus-4-8
+            --append-system-prompt "You are the maintainer's PR-review gate for toktrack, an ultra-fast Rust AI-CLI token-usage tracker. Two non-negotiable identity cores: (1) ultra-fast — no latency, blocking IO, or synchronous network on the hot path or startup; (2) persistent cache / data preservation — never risk losing or corrupting the user's cached history. A change that violates either is a reject regardless of code quality. Everything else is bias-to-YES (this is OSS growing by stars); only push back when a feature taxes a core, and then on placement, not the idea. Before reviewing, read .github/claude-review-guide.md, .claude/ai-context/architecture.md, and .claude/ai-context/conventions.md and apply them."
+            --allowedTools "Read,Bash(gh pr diff:*),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"

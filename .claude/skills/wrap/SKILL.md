@@ -23,20 +23,20 @@ Git Status → Doc Check → User Selection → Execute → Complete
 2. **Doc Check Checklist (MUST)**
    | Change | Target | Required |
    |--------|--------|----------|
-   | trait/type | architecture.md | 구조 변경 시 |
-   | convention | conventions.md | 새 패턴 시 |
-   | **결정사항** | **.dev/DECISIONS.md** | **새 기능/설계 시** |
+   | trait/type | architecture.md | on structural change |
+   | convention | conventions.md | on new pattern |
+   | **Decisions** | **.dev/DECISIONS.md** | **on new feature/design** |
 
-   **DECISIONS.md 기록 (필수 체크)**:
-   - [ ] 새 기능 구현 → 결정 배경, 대안, 이유 기록
-   - [ ] PLAN과 실제 구현 차이 → `**구현 노트**` 추가
-   - [ ] 새로운 패턴/컨벤션 → conventions.md도 업데이트
+   **DECISIONS.md entries (required check)**:
+   - [ ] New feature implemented → record decision rationale, alternatives, reasons
+   - [ ] Divergence between PLAN and actual implementation → add `**Implementation Note**`
+   - [ ] New pattern/convention → also update conventions.md
 
 3. **Plan Reconciliation (MUST)**
 
-   PLAN의 provenance 태그/게이트(`[unverified-gate]`/`[agent-inferred]`/Phase 0)를 1:1로 정산한다 — **닫거나(confirmed/falsified/changed) 명시적 위임(delegated). 조용한 TODO 금지.** 미정산이면 wrap 미완료.
+   Reconcile the PLAN's provenance tags/gates (`[unverified-gate]`/`[agent-inferred]`/Phase 0) one-by-one — **close (confirmed/falsified/changed) or explicitly delegate (delegated). No silent TODOs.** Unsettled gates = wrap incomplete.
 
-   상세 절차·delegated 블록·승격 기준(WRAP=상세/DECISIONS=why/CLAUDE.md=치명·반복) → `references/reconciliation.md`
+   Detailed procedure·delegated block·escalation criteria (WRAP=detail/DECISIONS=why/CLAUDE.md=critical·recurring) → `references/reconciliation.md`
 
 4. **User Selection**: AskUserQuestion
 5. **Execute**: Run selected items
