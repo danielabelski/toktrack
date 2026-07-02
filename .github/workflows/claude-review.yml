@@ -8,6 +8,15 @@ name: Claude PR Review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled]
+    # Skip PRs that only touch docs / agent context / assets — no code to review.
+    # A PR is reviewed only if it changes at least one non-ignored path (e.g. src/**, Cargo.*).
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.dev/**'
+      - '.claude/**'
+      - 'assets/**'
+      - 'LICENSE'
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -16,8 +25,6 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
-  # Required by claude-code-action to exchange an OIDC token for its GitHub token.
-  id-token: write
 
 jobs:
   review:
@@ -38,6 +45,10 @@ jobs:
 
       - uses: anthropics/claude-code-action@v1
         with:
+          # Use the default Actions token (repo grants pull-requests: write) to post
+          # comments, so we don't need the Claude GitHub App or the OIDC->app-token
+          # exchange (that exchange 401s unless the app is installed).
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
