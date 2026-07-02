@@ -81,6 +81,7 @@ If there are clippy warnings, FAIL before starting review (should have been caug
 3. Parse verdict → PASS → /wrap, FAIL → fix → /verify → re-review
 
 ## Rules
+- **Sub-agent model**: launch the Code Review Agent via the Agent tool with `model: "sonnet"` (Sonnet 5).
 - Do not run UX Review Agent (TUI project)
 - PASS → run /wrap immediately
 - FAIL → fix → /verify → re-review (max 3)
