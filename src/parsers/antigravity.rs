@@ -254,9 +254,8 @@ fn decode_entry(
         .filter(|s| !s.is_empty());
     let timestamp = decode_timestamp(cmm).unwrap_or(fallback_ts);
 
-    // `gemini-default` (or a missing model) is Antigravity's placeholder for
-    // "whatever the current default Gemini was" — resolve it to the concrete
-    // model that was actually served at the record's timestamp.
+    // `gemini-default` (and a missing model) is Antigravity's placeholder for
+    // whatever the default Gemini was at the time — not a fixed model id.
     let model = match raw_model {
         Some(m)
             if matches!(
