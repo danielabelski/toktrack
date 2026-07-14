@@ -254,32 +254,20 @@ fn decode_entry(
         .filter(|s| !s.is_empty());
     let timestamp = decode_timestamp(cmm).unwrap_or(fallback_ts);
 
+    // `gemini-default` (or a missing model) is Antigravity's placeholder for
+    // "whatever the current default Gemini was" — resolve it to the concrete
+    // model that was actually served at the record's timestamp.
     let model = match raw_model {
-        Some(m) => {
-            let lower = m.to_lowercase();
-            if lower == "gemini-default" || lower == "gemini/default" {
-                let ts = timestamp.timestamp();
-                if ts < 1742860800 {
-                    Some("gemini-2.0-flash".to_string())
-                } else if ts < 1779148800 {
-                    Some("gemini-2.5-flash".to_string())
-                } else {
-                    Some("gemini-3.5-flash".to_string())
-                }
-            } else {
-                Some(m)
-            }
+        Some(m)
+            if matches!(
+                m.to_lowercase().as_str(),
+                "gemini-default" | "gemini/default"
+            ) =>
+        {
+            Some(resolve_gemini_default(timestamp.timestamp()).to_string())
         }
-        None => {
-            let ts = timestamp.timestamp();
-            if ts < 1742860800 {
-                Some("gemini-2.0-flash".to_string())
-            } else if ts < 1779148800 {
-                Some("gemini-2.5-flash".to_string())
-            } else {
-                Some("gemini-3.5-flash".to_string())
-            }
-        }
+        Some(m) => Some(m),
+        None => Some(resolve_gemini_default(timestamp.timestamp()).to_string()),
     };
 
     Some(UsageEntry {
@@ -308,6 +296,20 @@ fn decode_entry(
         provider: None,
         project: project.map(String::from),
     })
+}
+
+/// Map a `gemini-default`/missing-model record to the concrete Gemini model
+/// that Antigravity served at `ts` (unix seconds). Boundaries are exclusive
+/// upper bounds — a record exactly at a boundary belongs to the later bucket:
+/// `< 2025-03-25` → 2.0-flash, `< 2026-05-19` → 2.5-flash, else 3.5-flash.
+fn resolve_gemini_default(ts: i64) -> &'static str {
+    if ts < 1742860800 {
+        "gemini-2.0-flash"
+    } else if ts < 1779148800 {
+        "gemini-2.5-flash"
+    } else {
+        "gemini-3.5-flash"
+    }
 }
 
 /// `ChatModelMetadata.chat_start_metadata(9).timestamp(4) = {seconds(1), nanos(2)}`.
@@ -1099,6 +1101,16 @@ mod tests {
             assert_eq!(entries.len(), 1);
             assert_eq!(entries[0].model.as_deref(), Some(expected_model));
         }
+    }
+
+    #[test]
+    fn test_resolve_gemini_default_boundaries() {
+        // Boundaries are exclusive upper bounds: a timestamp exactly on a
+        // boundary belongs to the LATER bucket. Pins `<` vs `<=`.
+        assert_eq!(resolve_gemini_default(1742860799), "gemini-2.0-flash"); // 1s before 2025-03-25
+        assert_eq!(resolve_gemini_default(1742860800), "gemini-2.5-flash"); // exactly 2025-03-25
+        assert_eq!(resolve_gemini_default(1779148799), "gemini-2.5-flash"); // 1s before 2026-05-19
+        assert_eq!(resolve_gemini_default(1779148800), "gemini-3.5-flash"); // exactly 2026-05-19
     }
 
     #[test]
