@@ -1,14 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches: [main, develop]
-    paths-ignore:
-      - 'CHANGELOG.md'
-      - '.release-please-manifest.json'
-      - 'Cargo.toml'  # release-please updates version here
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+
+# Superseded runs on the same PR are pointless once a newer commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
