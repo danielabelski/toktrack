@@ -16,7 +16,7 @@ case "$CURRENT" in
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "## Skill Chain: /verify 필요\n\n`/implement` 완료 후 반드시 `/verify` 호출.\n**사용자 확인 없이 즉시 실행하세요.**"
+    "additionalContext": "## Skill Chain: /verify required\n\nAfter `/implement` completes, always call `/verify`.\n**Run it immediately without asking the user.**"
   }
 }
 EOF
@@ -29,7 +29,7 @@ EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "## Skill Chain: /review 필요\n\n`/verify` 통과 후 반드시 `/review` 호출.\n**사용자 확인 없이 즉시 실행하세요.**"
+    "additionalContext": "## Skill Chain: /review required\n\nAfter `/verify` passes, always call `/review`.\n**Run it immediately without asking the user.**"
   }
 }
 EOF
@@ -42,7 +42,7 @@ EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "## Skill Chain: /wrap 필요\n\n`/review` PASS 후 반드시 `/wrap` 호출.\n**사용자 확인 없이 즉시 실행하세요.**"
+    "additionalContext": "## Skill Chain: /wrap required\n\nAfter `/review` passes, always call `/wrap`.\n**Run it immediately without asking the user.**"
   }
 }
 EOF

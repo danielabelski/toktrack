@@ -21,13 +21,13 @@ fi
 
 # Warn without blocking while clarification is still in progress.
 if [ -f "$CLARIFY_IN_PROGRESS_MARKER" ]; then
-  echo "⚠️ /clarify 후 Plan Mode 진행 권장 (코드 파일 수정)" >&2
+  echo "⚠️ Editing a code file mid-/clarify — recommend finishing clarification and planning first" >&2
   exit 0
 fi
 
 # Warn without blocking when implementation has not started.
 if [ -f "$PLAN_EXITED_MARKER" ] && [ ! -f "$IMPLEMENT_STARTED_MARKER" ]; then
-  echo "⚠️ 코드 구현은 /implement 스킬 사용 권장 (TDD 워크플로우)" >&2
+  echo "⚠️ Use the /implement skill for code implementation (TDD workflow)" >&2
   exit 0
 fi
 
