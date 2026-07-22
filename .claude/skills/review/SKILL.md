@@ -40,6 +40,7 @@ This repo is OSS and the reviewer is the author (receiving PRs). Generic code he
 | **ruthless** | Environment/state matrix (contributors test only their own machine) | OS(paths·home·file locks·Windows) / source schema version(forward new-schema+backward old-format, new source·parser PRs require old-version·unknown-schema fixture) / data shape(empty·large·corrupt·partial·permissions) / locale·TZ·DST / concurrency(read race while source file is being written) / terminal(width·color·TERM) / first-run vs upgrade migration |
 | **bias to YES** | Other features·ideas | Stars are the goal — acceptance bias. But if it taxes either core(weighing down hot path·startup·cache paths), request location·approach adjustment only. additive/opt-in/lazy/behind a flag = welcome |
 | **lenient** | Style·naming preferences | Linter takes precedence, bikeshed prohibited (uniform strictness = contributor friction → star loss) |
+| **signal** | Direction/growth fit (not a gate) | Beyond code quality·conventions, every contribution(issue·PR) also gets a direction-fit verdict in the review output: `strengthens wedge (persistent cache/data preservation)` / `neutral (additive)` / `dilutes focus (e.g. feature-parity chasing)` + 1–2 lines of rationale. Weigh holistically: maintenance cost vs value, real value to target users(AI CLI heavy users), contribution to project direction. Never a reject reason — the two identities above remain the only gates, bias-to-YES stands |
 
 ### Rust-specific
 
