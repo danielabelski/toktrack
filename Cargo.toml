@@ -7,6 +7,8 @@ license = "MIT"
 repository = "https://github.com/mag123c/toktrack"
 keywords = ["claude-code", "token-tracker", "ai-cost", "tui", "llm"]
 categories = ["command-line-utilities"]
+# Without this, the gated snapshot bin makes bare `cargo run` ambiguous.
+default-run = "toktrack"
 
 [dependencies]
 # JSON parsing (SIMD optimized)
@@ -55,6 +57,20 @@ criterion = { version = "0.8", features = ["html_reports"] }
 
 # Temp files for tests
 tempfile = "3"
+
+[features]
+# Not part of a normal build: gates the snapshot regeneration tool so release
+# builds stay a single binary.
+snapshot-tool = []
+
+[[bin]]
+name = "toktrack"
+path = "src/main.rs"
+
+[[bin]]
+name = "gen_pricing_snapshot"
+path = "src/bin/gen_pricing_snapshot.rs"
+required-features = ["snapshot-tool"]
 
 [[bench]]
 name = "parser_bench"

@@ -66,8 +66,9 @@ fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, 
 /// warning is surfaced, and every date whose raw files still exist is recomputed
 /// so the new shape is populated. v14 added per-project breakdown
 /// (`DailySummary.projects`). v15 resolves gemini-default / missing-model
-/// records by timestamp so they no longer appear as "unknown".
-const CACHE_VERSION: u32 = 15;
+/// records by timestamp so they no longer appear as "unknown". v16 prices 1h
+/// ephemeral cache writes at LiteLLM's `_above_1hr` rate.
+const CACHE_VERSION: u32 = 16;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DailySummaryCache {
@@ -343,6 +344,7 @@ mod tests {
         cost: Option<f64>,
     ) -> UsageEntry {
         UsageEntry {
+            fast_speed: false,
             timestamp: Utc.with_ymd_and_hms(year, month, day, 12, 0, 0).unwrap(),
             model: model.map(String::from),
             input_tokens: input,
@@ -420,6 +422,7 @@ mod tests {
 
         let entries = vec![
             UsageEntry {
+                fast_speed: false,
                 timestamp: yesterday.and_hms_opt(12, 0, 0).unwrap().and_utc(),
                 model: Some("claude".to_string()),
                 input_tokens: 100,
@@ -440,6 +443,7 @@ mod tests {
                 project: None,
             },
             UsageEntry {
+                fast_speed: false,
                 timestamp: today.and_hms_opt(12, 0, 0).unwrap().and_utc(),
                 model: Some("claude".to_string()),
                 input_tokens: 200,
@@ -529,6 +533,7 @@ mod tests {
         fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
 
         let entries = vec![UsageEntry {
+            fast_speed: false,
             timestamp: today.and_hms_opt(12, 0, 0).unwrap().and_utc(),
             model: Some("claude".to_string()),
             input_tokens: 100,
@@ -603,6 +608,7 @@ mod tests {
         fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
 
         let entries = vec![UsageEntry {
+            fast_speed: false,
             timestamp: today.and_hms_opt(15, 0, 0).unwrap().and_utc(),
             model: Some("claude".to_string()),
             input_tokens: 200,
