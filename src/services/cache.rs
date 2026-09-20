@@ -68,8 +68,8 @@ fn normalize_model_keys(models: HashMap<String, ModelUsage>) -> HashMap<String, 
 /// (`DailySummary.projects`). v15 resolves gemini-default / missing-model
 /// records by timestamp so they no longer appear as "unknown". v16 prices 1h
 /// ephemeral cache writes at LiteLLM's `_above_1hr` rate. v17 backfills Codex
-/// archived sessions, which were previously excluded from discovery.
-// v18 recalculates recorded Codex Fast usage with model-specific multipliers.
+/// archived sessions, which were previously excluded from discovery. v18
+/// recalculates recorded Codex Fast usage with model-specific multipliers.
 const CACHE_VERSION: u32 = 18;
 
 #[derive(Debug, Serialize, Deserialize)]
