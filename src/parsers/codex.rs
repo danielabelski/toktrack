@@ -802,4 +802,64 @@ mod tests {
             assert_token_count_shape_known(&path);
         }
     }
+
+    /// Tiers we know how to price. A tier outside this set bills at Standard,
+    /// so silent vocabulary growth upstream is an undercount, not an error.
+    const KNOWN_SERVICE_TIERS: [&str; 3] = ["default", "priority", "fast"];
+
+    /// Fast pricing rests on one field the parser does not own. This asserts
+    /// where it lives and what it may say, so a rename, a move out of
+    /// `thread_settings`, or a new tier id fails loudly instead of quietly
+    /// pricing every Fast request at Standard.
+    fn assert_service_tier_shape_known(path: &Path) {
+        let file = File::open(path).unwrap();
+        for (i, line) in BufReader::new(file)
+            .lines()
+            .take(CANARY_LINE_LIMIT)
+            .enumerate()
+        {
+            let Ok(line) = line else { continue };
+            if !line.contains("thread_settings_applied") {
+                continue;
+            }
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            let Some(payload) = value.get("payload").filter(|p| {
+                p.get("type").and_then(|t| t.as_str()) == Some("thread_settings_applied")
+            }) else {
+                continue;
+            };
+            let settings = &payload["thread_settings"];
+            assert!(
+                settings.is_object() || settings.is_null(),
+                "Codex thread_settings is no longer an object at {}:{} — the service_tier lookup \
+                 in parse_line reads it as one.",
+                path.display(),
+                i + 1
+            );
+            // Older rollouts omit the tier entirely; only a present one is checked.
+            let Some(tier) = settings.get("service_tier").filter(|t| !t.is_null()) else {
+                continue;
+            };
+            let known = tier
+                .as_str()
+                .is_some_and(|t| KNOWN_SERVICE_TIERS.contains(&t));
+            assert!(
+                known,
+                "Codex service_tier drifted to {tier} at {}:{} — decide whether it bills at a Fast \
+                 rate, then add it to KNOWN_SERVICE_TIERS (and to parse_line if it does).",
+                path.display(),
+                i + 1
+            );
+        }
+    }
+
+    #[test]
+    fn test_codex_service_tier_schema_is_known() {
+        assert_service_tier_shape_known(&fixture_path("real-shape-thread-settings.jsonl"));
+        for path in recent_local_sessions(5) {
+            assert_service_tier_shape_known(&path);
+        }
+    }
 }
