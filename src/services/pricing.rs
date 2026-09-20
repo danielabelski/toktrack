@@ -207,8 +207,8 @@ fn tiered_cost(tokens: u64, base_price: f64, tier: Option<(u64, f64)>) -> f64 {
 /// Rate multiplier for the speed the request ran at. Claude Code records
 /// `usage.speed`, and LiteLLM carries the matching multiplier under
 /// `provider_specific_entry.fast` (2.0 for claude-opus-5, matching its $10/$50
-/// fast pricing against a $5/$25 base). Codex has exact model fallbacks below.
-/// Unknown rates bill at 1x.
+/// fast pricing against a $5/$25 base). Codex records no multiplier, so it falls
+/// back to the normalized model table below. Unknown rates bill at 1x.
 fn speed_multiplier(entry: &UsageEntry, rates: Option<&HashMap<String, f64>>) -> f64 {
     if !entry.fast_speed {
         return 1.0;
@@ -226,11 +226,17 @@ fn speed_multiplier(entry: &UsageEntry, rates: Option<&HashMap<String, f64>>) ->
         .as_deref()
         .is_some_and(|source| source == "codex" || source.starts_with("codex@"));
     if codex && entry.provider.as_deref().is_none_or(|p| p == "openai") {
-        match entry.model.as_deref() {
-            Some("gpt-5.5") => return 2.5,
+        // Keyed on the normalized name so the table survives the drift
+        // get_pricing already absorbs: dotted ids, date suffixes, and casing.
+        let model = entry
+            .model
+            .as_deref()
+            .map(|m| super::normalize_model_name(m).to_lowercase());
+        match model.as_deref() {
+            Some("gpt-5-5") => return 2.5,
             Some(
-                "gpt-5.3-codex" | "gpt-5.4" | "gpt-5.6" | "gpt-5.6-sol" | "gpt-5.6-terra"
-                | "gpt-5.6-luna" | "gpt-6-astra",
+                "gpt-5-3-codex" | "gpt-5-4" | "gpt-5-6" | "gpt-5-6-sol" | "gpt-5-6-terra"
+                | "gpt-5-6-luna" | "gpt-6-astra",
             ) => return 2.0,
             _ => {}
         }
@@ -2489,6 +2495,8 @@ web_search_per_request = 0.01
     #[test]
     fn test_codex_fast_published_rates() {
         for model in [
+            "gpt-5.3-codex",
+            "gpt-5.4",
             "gpt-5.6",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
@@ -2505,6 +2513,37 @@ web_search_per_request = 0.01
         unknown.source = Some("codex".into());
         unknown.fast_speed = true;
         assert_eq!(speed_multiplier(&unknown, None), 1.0);
+    }
+
+    /// The fallback table is keyed on the normalized name, so the same model
+    /// still bills Fast when Codex spells it with hyphens, a date suffix, or
+    /// different casing — the drift `get_pricing` already absorbs for base rates.
+    #[test]
+    fn test_codex_fast_rates_survive_model_id_drift() {
+        for (model, expected) in [
+            ("gpt-5-6-sol", 2.0),
+            ("gpt-5.6-sol-20260720", 2.0),
+            ("GPT-5.6-Sol", 2.0),
+            ("gpt-5-5", 2.5),
+            ("gpt-5.5-20260101", 2.5),
+        ] {
+            let mut entry = make_entry(Some(model), 100, 10, 0, 0, None);
+            entry.source = Some("codex".into());
+            entry.fast_speed = true;
+            assert_eq!(speed_multiplier(&entry, None), expected, "{model}");
+        }
+    }
+
+    /// Codex offers a `priority` tier for models that have no published Fast
+    /// rate. Standard is the deliberate answer there, not a guessed multiplier.
+    #[test]
+    fn test_codex_fast_untabled_models_stay_standard() {
+        for model in ["codex-auto-review", "gpt-reserve"] {
+            let mut entry = make_entry(Some(model), 100, 10, 0, 0, None);
+            entry.source = Some("codex".into());
+            entry.fast_speed = true;
+            assert_eq!(speed_multiplier(&entry, None), 1.0, "{model}");
+        }
     }
 
     #[test]
