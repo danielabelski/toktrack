@@ -268,6 +268,11 @@ impl CLIParser for CodexParser {
             output_tokens: 0,
             cached_input_tokens: 0,
         };
+        // Codex re-emits the same token_count event (byte-identical total AND
+        // last usage) within one response, so consecutive identical snapshots
+        // must collapse. Both fields key the identity: `last` alone would also
+        // drop a turn whose `total` genuinely advanced while `last` repeated.
+        let mut prev_key: Option<(u64, u64, u64, u64, u64, u64)> = None;
 
         for line_result in reader.lines() {
             let line = match line_result {
@@ -302,8 +307,33 @@ impl CLIParser for CodexParser {
                     if cwd.is_some() {
                         current_project = cwd;
                     }
+                    // Re-emission identity is scoped to one session.
+                    prev_key = None;
                 }
                 ParseResult::TokenCount(data) => {
+                    // Collapse byte-identical re-emissions before anything else.
+                    // Identity is (total, last); a repeat of `last` with an
+                    // advancing `total` is a distinct turn and must survive.
+                    let key = data.last.as_ref().map(|l| {
+                        (
+                            data.total.input_tokens,
+                            data.total.output_tokens,
+                            data.total.cached_input_tokens,
+                            l.input_tokens,
+                            l.output_tokens,
+                            l.cached_input_tokens,
+                        )
+                    });
+                    if key.is_some() && prev_key == key {
+                        prev_totals = data.total;
+                        continue;
+                    }
+                    // An event without `last` has no identity; letting it
+                    // overwrite the key would let the next re-emission through.
+                    if key.is_some() {
+                        prev_key = key;
+                    }
+
                     // Compute delta: prefer last_token_usage, fallback to diff
                     let (delta_input, delta_output, delta_cached) =
                         if let Some(ref last) = data.last {
@@ -508,6 +538,76 @@ mod tests {
             .unwrap();
 
         assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_byte_identical_reemissions_collapse() {
+        // The same token_count event duplicated (identical total AND last):
+        // one turn, counted once.
+        let parser = CodexParser::with_data_dir(PathBuf::from("tests/fixtures/codex"));
+        let entries = parser
+            .parse_file(&fixture_path("reemitted-session.jsonl"))
+            .unwrap();
+        assert_eq!(entries.len(), 3);
+        let reemitted_turn: Vec<_> = entries.iter().filter(|e| e.output_tokens == 70).collect();
+        assert_eq!(
+            reemitted_turn.len(),
+            1,
+            "re-emitted turn counted more than once"
+        );
+    }
+
+    #[test]
+    fn test_repeated_last_with_advancing_total_survives() {
+        // `last` repeating while `total` advances is a distinct turn: the
+        // guard must not collapse it (the undercount direction).
+        let parser = CodexParser::with_data_dir(PathBuf::from("tests/fixtures/codex"));
+        let entries = parser
+            .parse_file(&fixture_path("repeated-last-advancing-total.jsonl"))
+            .unwrap();
+        // Prefer-last path: turn 2's last repeats turn 1's, so its delta is
+        // (100 in, 50 out, 20 cached) again -> non-cached input 80, not 0 or
+        // a cumulative 100; the point is both turns survive the guard.
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].input_tokens, 80);
+        assert_eq!(entries[0].output_tokens, 50);
+        assert_eq!(entries[1].input_tokens, 80);
+        assert_eq!(entries[1].output_tokens, 50);
+    }
+
+    #[test]
+    fn test_reemission_after_event_without_last_still_collapses() {
+        // A token_count without `last_token_usage` between a turn and its
+        // byte-identical re-emission must not clear the dedup memory,
+        // otherwise the re-emission is counted as a second turn.
+        let parser = CodexParser::with_data_dir(PathBuf::from("tests/fixtures/codex"));
+        let entries = parser
+            .parse_file(&fixture_path("reemission-around-missing-last.jsonl"))
+            .unwrap();
+
+        assert_eq!(entries.len(), 1, "re-emission counted as a second turn");
+        assert_eq!(entries[0].input_tokens, 80);
+        assert_eq!(entries[0].output_tokens, 50);
+        assert_eq!(entries[0].cache_read_tokens, 20);
+    }
+
+    #[test]
+    fn test_reemission_key_does_not_cross_session_meta() {
+        // Dedup identity is scoped to one session: the first turn of a new
+        // session_meta must count even if its numbers match the last turn
+        // of the previous session.
+        let parser = CodexParser::with_data_dir(PathBuf::from("tests/fixtures/codex"));
+        let entries = parser
+            .parse_file(&fixture_path("reemission-key-across-session-meta.jsonl"))
+            .unwrap();
+
+        assert_eq!(entries.len(), 2, "new session's first turn was collapsed");
+        for (entry, session) in entries.iter().zip(["session-a", "session-b"]) {
+            assert_eq!(entry.message_id, Some(session.to_string()));
+            assert_eq!(entry.input_tokens, 80);
+            assert_eq!(entry.output_tokens, 50);
+            assert_eq!(entry.cache_read_tokens, 20);
+        }
     }
 
     #[test]
